@@ -30,19 +30,30 @@ public class ChatTools {
         return "Saved to memory: " + key + " = " + value;
     }
 
-    @Tool(description = "Read a skill file from the skills folder.")
+    @Tool(description = "Read a file from a skill folder. Path is relative to the skills root, e.g. 'github-cli/instructions.md'.")
     public String readSkillFile(
-            @ToolParam(description = "Name of the file to read") String filename) {
-        return skillsService.readFile(filename);
+            @ToolParam(description = "Relative path within the skills folder, e.g. 'skill-name/file.md'") String relativePath) {
+        return skillsService.readFile(relativePath);
     }
 
-    @Tool(description = "List available skill files in the skills folder.")
-    public String listSkillFiles() {
-        var files = skillsService.listFiles();
-        if (files.isEmpty()) {
-            return "No files in skills folder.";
+    @Tool(description = "List all available skills (top-level folders in the skills directory).")
+    public String listSkills() {
+        var skills = skillsService.listSkills();
+        if (skills.isEmpty()) {
+            return "No skills installed.";
         }
-        return "Available skill files:\n" + files.stream()
+        return "Available skills:\n" + skills.stream()
+                .collect(Collectors.joining("\n"));
+    }
+
+    @Tool(description = "List all files inside a specific skill folder.")
+    public String listSkillFiles(
+            @ToolParam(description = "Name of the skill folder") String skillName) {
+        var files = skillsService.listSkillFiles(skillName);
+        if (files.isEmpty()) {
+            return "No files found for skill: " + skillName;
+        }
+        return "Files in " + skillName + ":\n" + files.stream()
                 .collect(Collectors.joining("\n"));
     }
 

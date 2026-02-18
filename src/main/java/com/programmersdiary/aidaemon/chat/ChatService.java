@@ -74,11 +74,14 @@ public class ChatService {
             sb.append("\n");
         }
 
-        var files = skillsService.listFiles();
-        if (!files.isEmpty()) {
-            sb.append("Skill files available: ");
-            sb.append(files.stream().collect(Collectors.joining(", ")));
-            sb.append("\n\n");
+        var skills = skillsService.listSkills();
+        if (!skills.isEmpty()) {
+            sb.append("Installed skills: ").append(String.join(", ", skills)).append("\n");
+            var allFiles = skillsService.listAllFiles();
+            if (!allFiles.isEmpty()) {
+                sb.append("Skill files: ").append(String.join(", ", allFiles)).append("\n");
+            }
+            sb.append("\n");
         }
 
         if (!systemInstructions.isBlank()) {

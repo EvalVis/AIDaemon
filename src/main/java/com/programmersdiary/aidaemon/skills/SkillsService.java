@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -58,27 +59,51 @@ public class SkillsService {
         }
     }
 
-    public String readFile(String filename) {
-        var path = skillsDir.resolve(filename).normalize();
+    public String readFile(String relativePath) {
+        var path = skillsDir.resolve(relativePath).normalize();
         if (!path.startsWith(skillsDir)) {
             return "Error: Cannot read files outside the skills folder.";
         }
         try {
             return Files.readString(path);
         } catch (IOException e) {
-            return "Error: File not found: " + filename;
+            return "Error: File not found: " + relativePath;
         }
     }
 
-    public List<String> listFiles() {
+    public List<String> listSkills() {
         try (var stream = Files.list(skillsDir)) {
             return stream
-                    .filter(Files::isRegularFile)
+                    .filter(Files::isDirectory)
                     .map(p -> p.getFileName().toString())
                     .sorted()
                     .toList();
         } catch (IOException e) {
             return List.of();
         }
+    }
+
+    public List<String> listSkillFiles(String skillName) {
+        var skillDir = skillsDir.resolve(skillName).normalize();
+        if (!skillDir.startsWith(skillsDir) || !Files.isDirectory(skillDir)) {
+            return List.of();
+        }
+        try (var stream = Files.walk(skillDir)) {
+            return stream
+                    .filter(Files::isRegularFile)
+                    .map(p -> skillsDir.relativize(p).toString().replace('\\', '/'))
+                    .sorted()
+                    .toList();
+        } catch (IOException e) {
+            return List.of();
+        }
+    }
+
+    public List<String> listAllFiles() {
+        var result = new ArrayList<String>();
+        for (var skill : listSkills()) {
+            result.addAll(listSkillFiles(skill));
+        }
+        return result;
     }
 }
