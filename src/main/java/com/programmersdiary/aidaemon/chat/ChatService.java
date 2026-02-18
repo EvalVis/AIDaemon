@@ -10,6 +10,7 @@ import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.support.ToolCallbacks;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -23,13 +24,16 @@ public class ChatService {
     private final ProviderConfigRepository configRepository;
     private final ChatModelFactory chatModelFactory;
     private final ContextService contextService;
+    private final String systemInstructions;
 
     public ChatService(ProviderConfigRepository configRepository,
                        ChatModelFactory chatModelFactory,
-                       ContextService contextService) {
+                       ContextService contextService,
+                       @Value("${aidaemon.system-instructions:}") String systemInstructions) {
         this.configRepository = configRepository;
         this.chatModelFactory = chatModelFactory;
         this.contextService = contextService;
+        this.systemInstructions = systemInstructions;
     }
 
     public String chat(String providerId, List<ChatMessage> messages) {
@@ -66,8 +70,9 @@ public class ChatService {
             sb.append("\n\n");
         }
 
-        sb.append("Use the saveMemory tool when the user asks you to remember something. ");
-        sb.append("Use readContextFile/listContextFiles tools to access files in the context folder.");
+        if (!systemInstructions.isBlank()) {
+            sb.append(systemInstructions);
+        }
 
         return sb.toString();
     }

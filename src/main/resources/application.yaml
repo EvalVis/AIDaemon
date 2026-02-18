@@ -4,3 +4,6 @@ spring:
 
 aidaemon:
   config-dir: ${user.home}/.aidaemon
+  system-instructions: |
+    Use the saveMemory tool when the user asks you to remember something.
+    Use readContextFile/listContextFiles tools to access files in the context folder.
