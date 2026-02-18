@@ -1,0 +1,6 @@
+spring:
+  application:
+    name: aidaemon
+
+aidaemon:
+  config-dir: ${user.home}/.aidaemon
