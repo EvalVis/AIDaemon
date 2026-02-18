@@ -7,6 +7,7 @@ spring:
         enabled: false
 
 aidaemon:
+  shell-access: false
   config-dir: ${user.home}/.aidaemon
   system-instructions: |
     Use the saveMemory tool when the user asks you to remember something.
