@@ -9,3 +9,4 @@ aidaemon:
     Use readSkillFile/listSkillFiles tools to access files in the skills folder.
     Use scheduleJob to create recurring or one-time scheduled tasks. Convert user-friendly frequencies to cron expressions (e.g. "every 5 minutes" = "0 */5 * * * *", "daily at 9am" = "0 0 9 * * *", "every hour" = "0 0 * * * *").
     Use cancelJob/listJobs to manage existing scheduled jobs.
+    If executeCommand tool is available, use it to run shell commands when needed (e.g. git, gh, docker, curl). Always show the command you intend to run before executing it.

@@ -2,6 +2,7 @@ package com.programmersdiary.aidaemon.cli;
 
 import com.programmersdiary.aidaemon.chat.ConversationService;
 import com.programmersdiary.aidaemon.provider.ProviderConfigRepository;
+import com.programmersdiary.aidaemon.skills.ShellAccessService;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
@@ -14,11 +15,14 @@ public class InteractiveCli implements CommandLineRunner {
 
     private final ProviderConfigRepository providerRepository;
     private final ConversationService conversationService;
+    private final ShellAccessService shellAccessService;
 
     public InteractiveCli(ProviderConfigRepository providerRepository,
-                          ConversationService conversationService) {
+                          ConversationService conversationService,
+                          ShellAccessService shellAccessService) {
         this.providerRepository = providerRepository;
         this.conversationService = conversationService;
+        this.shellAccessService = shellAccessService;
     }
 
     @Override
@@ -31,7 +35,7 @@ public class InteractiveCli implements CommandLineRunner {
         if (providerId == null) return;
 
         var conversation = conversationService.create(providerId);
-        System.out.println("Conversation started. Type /quit to exit, /new to start fresh.\n");
+        System.out.println("Conversation started. Commands: /quit, /new, /shell\n");
 
         while (true) {
             System.out.print("You: ");
@@ -45,6 +49,12 @@ public class InteractiveCli implements CommandLineRunner {
                 if (providerId == null) break;
                 conversation = conversationService.create(providerId);
                 System.out.println("New conversation started.\n");
+                continue;
+            }
+            if (input.equalsIgnoreCase("/shell")) {
+                boolean enabled = !shellAccessService.isEnabled();
+                shellAccessService.setEnabled(enabled);
+                System.out.println("Shell access: " + (enabled ? "ON" : "OFF") + "\n");
                 continue;
             }
 
