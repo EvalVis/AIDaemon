@@ -10,69 +10,80 @@ import org.springframework.ai.ollama.api.OllamaChatOptions;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.openai.api.OpenAiApi;
+import org.springframework.ai.tool.ToolCallback;
 import org.springframework.stereotype.Component;
+
+import java.util.List;
 
 @Component
 public class ChatModelFactory {
 
-    public ChatModel create(ProviderConfig config) {
+    public ChatModel create(ProviderConfig config, List<ToolCallback> tools) {
         return switch (config.type()) {
-            case OPENAI -> createOpenAi(config);
-            case ANTHROPIC -> createAnthropic(config);
-            case OLLAMA -> createOllama(config);
-            case GEMINI -> createGemini(config);
+            case OPENAI -> createOpenAi(config, tools);
+            case ANTHROPIC -> createAnthropic(config, tools);
+            case OLLAMA -> createOllama(config, tools);
+            case GEMINI -> createGemini(config, tools);
         };
     }
 
-    private ChatModel createOpenAi(ProviderConfig config) {
+    private ChatModel createOpenAi(ProviderConfig config, List<ToolCallback> tools) {
         var apiBuilder = OpenAiApi.builder()
                 .apiKey(config.apiKey() != null ? config.apiKey() : "unused");
         if (config.baseUrl() != null) {
             apiBuilder.baseUrl(config.baseUrl());
         }
+        var options = OpenAiChatOptions.builder()
+                .model(config.model() != null ? config.model() : "gpt-4o")
+                .toolCallbacks(tools)
+                .build();
         return OpenAiChatModel.builder()
                 .openAiApi(apiBuilder.build())
-                .defaultOptions(OpenAiChatOptions.builder()
-                        .model(config.model() != null ? config.model() : "gpt-4o")
-                        .build())
+                .defaultOptions(options)
                 .build();
     }
 
-    private ChatModel createAnthropic(ProviderConfig config) {
+    private ChatModel createAnthropic(ProviderConfig config, List<ToolCallback> tools) {
         var api = AnthropicApi.builder()
                 .apiKey(config.apiKey())
                 .build();
+        var options = AnthropicChatOptions.builder()
+                .model(config.model() != null ? config.model() : "claude-sonnet-4-20250514")
+                .maxTokens(4096)
+                .toolCallbacks(tools)
+                .build();
         return AnthropicChatModel.builder()
                 .anthropicApi(api)
-                .defaultOptions(AnthropicChatOptions.builder()
-                        .model(config.model() != null ? config.model() : "claude-sonnet-4-20250514")
-                        .maxTokens(4096)
-                        .build())
+                .defaultOptions(options)
                 .build();
     }
 
-    private ChatModel createGemini(ProviderConfig config) {
+    private ChatModel createGemini(ProviderConfig config, List<ToolCallback> tools) {
         var api = OpenAiApi.builder()
                 .apiKey(config.apiKey())
                 .baseUrl(config.baseUrl() != null ? config.baseUrl() : "https://generativelanguage.googleapis.com/v1beta/openai")
                 .build();
+        var options = OpenAiChatOptions.builder()
+                .model(config.model() != null ? config.model() : "gemini-2.0-flash")
+                .toolCallbacks(tools)
+                .build();
         return OpenAiChatModel.builder()
                 .openAiApi(api)
-                .defaultOptions(OpenAiChatOptions.builder()
-                        .model(config.model() != null ? config.model() : "gemini-2.0-flash")
-                        .build())
+                .defaultOptions(options)
                 .build();
     }
 
-    private ChatModel createOllama(ProviderConfig config) {
+    private ChatModel createOllama(ProviderConfig config, List<ToolCallback> tools) {
         var api = OllamaApi.builder()
                 .baseUrl(config.baseUrl() != null ? config.baseUrl() : "http://localhost:11434")
                 .build();
+        var options = OllamaChatOptions.builder()
+                .model(config.model() != null ? config.model() : "llama3.2")
+                .toolCallbacks(tools)
+                .build();
         return OllamaChatModel.builder()
                 .ollamaApi(api)
-                .defaultOptions(OllamaChatOptions.builder()
-                        .model(config.model() != null ? config.model() : "llama3.2")
-                        .build())
+                .defaultOptions(options)
                 .build();
     }
 }
