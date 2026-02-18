@@ -24,21 +24,6 @@ public class McpController {
         return mcpService.getConnectedServers();
     }
 
-    @PostMapping("/{name}")
-    @ResponseStatus(HttpStatus.CREATED)
-    public Map<String, String> addServer(@PathVariable String name, @RequestBody McpServerConfig config) {
-        mcpService.addServer(name, config);
-        return Map.of("name", name, "status", "connected");
-    }
-
-    @DeleteMapping("/{name}")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void removeServer(@PathVariable String name) {
-        if (!mcpService.removeServer(name)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
-        }
-    }
-
     @PostMapping("/reload")
     public Map<String, Object> reload() {
         mcpService.loadAll();
