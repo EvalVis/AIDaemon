@@ -106,4 +106,31 @@ public class SkillsService {
         }
         return result;
     }
+
+    public String installSkill(String slug, String content) {
+        var skillDir = skillsDir.resolve(slug);
+        try {
+            Files.createDirectories(skillDir);
+            Files.writeString(skillDir.resolve("SKILL.md"), content);
+            return slug;
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    public boolean removeSkill(String skillName) {
+        var skillDir = skillsDir.resolve(skillName).normalize();
+        if (!skillDir.startsWith(skillsDir) || !Files.isDirectory(skillDir)) {
+            return false;
+        }
+        try (var stream = Files.walk(skillDir)) {
+            stream.sorted(java.util.Comparator.reverseOrder())
+                    .forEach(p -> {
+                        try { Files.delete(p); } catch (IOException ignored) {}
+                    });
+            return true;
+        } catch (IOException e) {
+            return false;
+        }
+    }
 }
