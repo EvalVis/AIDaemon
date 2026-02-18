@@ -4,6 +4,7 @@ import com.programmersdiary.aidaemon.context.ChatTools;
 import com.programmersdiary.aidaemon.context.ContextService;
 import com.programmersdiary.aidaemon.provider.ChatModelFactory;
 import com.programmersdiary.aidaemon.provider.ProviderConfigRepository;
+import com.programmersdiary.aidaemon.scheduling.ScheduledJobExecutor;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
@@ -24,15 +25,18 @@ public class ChatService {
     private final ProviderConfigRepository configRepository;
     private final ChatModelFactory chatModelFactory;
     private final ContextService contextService;
+    private final ScheduledJobExecutor jobExecutor;
     private final String systemInstructions;
 
     public ChatService(ProviderConfigRepository configRepository,
                        ChatModelFactory chatModelFactory,
                        ContextService contextService,
+                       ScheduledJobExecutor jobExecutor,
                        @Value("${aidaemon.system-instructions:}") String systemInstructions) {
         this.configRepository = configRepository;
         this.chatModelFactory = chatModelFactory;
         this.contextService = contextService;
+        this.jobExecutor = jobExecutor;
         this.systemInstructions = systemInstructions;
     }
 
@@ -40,7 +44,7 @@ public class ChatService {
         var config = configRepository.findById(providerId)
                 .orElseThrow(() -> new IllegalArgumentException("Provider not found: " + providerId));
 
-        var tools = Arrays.asList(ToolCallbacks.from(new ChatTools(contextService)));
+        var tools = Arrays.asList(ToolCallbacks.from(new ChatTools(contextService, jobExecutor, providerId)));
         var chatModel = chatModelFactory.create(config, tools);
 
         var springMessages = new ArrayList<Message>();
