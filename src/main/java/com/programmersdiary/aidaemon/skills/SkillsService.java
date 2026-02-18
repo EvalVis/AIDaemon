@@ -107,11 +107,16 @@ public class SkillsService {
         return result;
     }
 
-    public String installSkill(String slug, String content) {
+    public String installSkill(String slug, Map<String, String> files) {
         var skillDir = skillsDir.resolve(slug);
         try {
             Files.createDirectories(skillDir);
-            Files.writeString(skillDir.resolve("SKILL.md"), content);
+            for (var entry : files.entrySet()) {
+                var filePath = skillDir.resolve(entry.getKey()).normalize();
+                if (!filePath.startsWith(skillDir)) continue;
+                Files.createDirectories(filePath.getParent());
+                Files.writeString(filePath, entry.getValue());
+            }
             return slug;
         } catch (IOException e) {
             throw new UncheckedIOException(e);

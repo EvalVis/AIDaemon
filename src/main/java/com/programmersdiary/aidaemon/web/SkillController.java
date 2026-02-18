@@ -33,16 +33,24 @@ public class SkillController {
 
     @PostMapping("/install/{namespace}/{slug}")
     @ResponseStatus(HttpStatus.CREATED)
-    public Map<String, String> installFromSmithery(@PathVariable String namespace, @PathVariable String slug) {
-        var skill = smitheryClient.getSkill(namespace, slug);
-        if (skill == null || skill.prompt() == null) {
+    public Map<String, Object> installFromSmithery(@PathVariable String namespace, @PathVariable String slug) {
+        var metadata = smitheryClient.getSkillMetadata(namespace, slug);
+        if (metadata == null || metadata.gitUrl() == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Skill not found: " + namespace + "/" + slug);
         }
-        skillsService.installSkill(slug, skill.prompt());
+
+        var files = smitheryClient.downloadSkillFiles(metadata.gitUrl());
+        if (files.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No files found for skill: " + namespace + "/" + slug);
+        }
+
+        skillsService.installSkill(slug, files);
+
         return Map.of(
                 "skill", slug,
-                "name", skill.displayName(),
-                "description", skill.description(),
+                "name", metadata.displayName() != null ? metadata.displayName() : slug,
+                "description", metadata.description() != null ? metadata.description() : "",
+                "files", files.keySet(),
                 "source", "smithery:" + namespace + "/" + slug);
     }
 
