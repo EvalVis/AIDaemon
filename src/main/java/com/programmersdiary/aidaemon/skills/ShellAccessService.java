@@ -1,5 +1,6 @@
 package com.programmersdiary.aidaemon.skills;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.concurrent.atomic.AtomicBoolean;
