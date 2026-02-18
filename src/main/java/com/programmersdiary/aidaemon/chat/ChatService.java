@@ -1,10 +1,10 @@
 package com.programmersdiary.aidaemon.chat;
 
-import com.programmersdiary.aidaemon.context.ChatTools;
-import com.programmersdiary.aidaemon.context.ContextService;
 import com.programmersdiary.aidaemon.provider.ChatModelFactory;
 import com.programmersdiary.aidaemon.provider.ProviderConfigRepository;
 import com.programmersdiary.aidaemon.scheduling.ScheduledJobExecutor;
+import com.programmersdiary.aidaemon.skills.ChatTools;
+import com.programmersdiary.aidaemon.skills.SkillsService;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
@@ -24,18 +24,18 @@ public class ChatService {
 
     private final ProviderConfigRepository configRepository;
     private final ChatModelFactory chatModelFactory;
-    private final ContextService contextService;
+    private final SkillsService skillsService;
     private final ScheduledJobExecutor jobExecutor;
     private final String systemInstructions;
 
     public ChatService(ProviderConfigRepository configRepository,
                        ChatModelFactory chatModelFactory,
-                       ContextService contextService,
+                       SkillsService skillsService,
                        ScheduledJobExecutor jobExecutor,
                        @Value("${aidaemon.system-instructions:}") String systemInstructions) {
         this.configRepository = configRepository;
         this.chatModelFactory = chatModelFactory;
-        this.contextService = contextService;
+        this.skillsService = skillsService;
         this.jobExecutor = jobExecutor;
         this.systemInstructions = systemInstructions;
     }
@@ -44,7 +44,7 @@ public class ChatService {
         var config = configRepository.findById(providerId)
                 .orElseThrow(() -> new IllegalArgumentException("Provider not found: " + providerId));
 
-        var tools = Arrays.asList(ToolCallbacks.from(new ChatTools(contextService, jobExecutor, providerId)));
+        var tools = Arrays.asList(ToolCallbacks.from(new ChatTools(skillsService, jobExecutor, providerId)));
         var chatModel = chatModelFactory.create(config, tools);
 
         var springMessages = new ArrayList<Message>();
@@ -60,16 +60,16 @@ public class ChatService {
     private String buildSystemContext() {
         var sb = new StringBuilder();
 
-        var memory = contextService.readMemory();
+        var memory = skillsService.readMemory();
         if (!memory.isEmpty()) {
             sb.append("You have persistent memory. Current contents:\n");
             memory.forEach((k, v) -> sb.append("- ").append(k).append(": ").append(v).append("\n"));
             sb.append("\n");
         }
 
-        var files = contextService.listFiles();
+        var files = skillsService.listFiles();
         if (!files.isEmpty()) {
-            sb.append("Files available in context folder: ");
+            sb.append("Skill files available: ");
             sb.append(files.stream().collect(Collectors.joining(", ")));
             sb.append("\n\n");
         }

@@ -1,4 +1,4 @@
-package com.programmersdiary.aidaemon.context;
+package com.programmersdiary.aidaemon.skills;
 
 import com.programmersdiary.aidaemon.scheduling.ScheduledJob;
 import com.programmersdiary.aidaemon.scheduling.ScheduledJobExecutor;
@@ -10,14 +10,14 @@ import java.util.stream.Collectors;
 
 public class ChatTools {
 
-    private final ContextService contextService;
+    private final SkillsService skillsService;
     private final ScheduledJobExecutor jobExecutor;
     private final String currentProviderId;
 
-    public ChatTools(ContextService contextService,
+    public ChatTools(SkillsService skillsService,
                      ScheduledJobExecutor jobExecutor,
                      String currentProviderId) {
-        this.contextService = contextService;
+        this.skillsService = skillsService;
         this.jobExecutor = jobExecutor;
         this.currentProviderId = currentProviderId;
     }
@@ -26,23 +26,23 @@ public class ChatTools {
     public String saveMemory(
             @ToolParam(description = "Short descriptive key") String key,
             @ToolParam(description = "The value to remember") String value) {
-        contextService.saveMemory(key, value);
+        skillsService.saveMemory(key, value);
         return "Saved to memory: " + key + " = " + value;
     }
 
-    @Tool(description = "Read a file from the context folder.")
-    public String readContextFile(
+    @Tool(description = "Read a skill file from the skills folder.")
+    public String readSkillFile(
             @ToolParam(description = "Name of the file to read") String filename) {
-        return contextService.readFile(filename);
+        return skillsService.readFile(filename);
     }
 
-    @Tool(description = "List available files in the context folder.")
-    public String listContextFiles() {
-        var files = contextService.listFiles();
+    @Tool(description = "List available skill files in the skills folder.")
+    public String listSkillFiles() {
+        var files = skillsService.listFiles();
         if (files.isEmpty()) {
-            return "No files in context folder.";
+            return "No files in skills folder.";
         }
-        return "Available files:\n" + files.stream()
+        return "Available skill files:\n" + files.stream()
                 .collect(Collectors.joining("\n"));
     }
 

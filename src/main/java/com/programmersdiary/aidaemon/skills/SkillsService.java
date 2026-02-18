@@ -1,4 +1,4 @@
-package com.programmersdiary.aidaemon.context;
+package com.programmersdiary.aidaemon.skills;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -16,22 +16,24 @@ import java.util.List;
 import java.util.Map;
 
 @Service
-public class ContextService {
+public class SkillsService {
 
     private final ObjectMapper objectMapper = new ObjectMapper()
             .enable(SerializationFeature.INDENT_OUTPUT);
-    private final Path contextDir;
+    private final Path configDir;
+    private final Path skillsDir;
     private final Path memoryFile;
 
-    public ContextService(
+    public SkillsService(
             @Value("${aidaemon.config-dir:${user.home}/.aidaemon}") String configDir) {
-        this.contextDir = Path.of(configDir, "context");
-        this.memoryFile = contextDir.resolve("memory.json");
+        this.configDir = Path.of(configDir);
+        this.skillsDir = this.configDir.resolve("skills");
+        this.memoryFile = this.configDir.resolve("memory.json");
     }
 
     @PostConstruct
     void init() throws IOException {
-        Files.createDirectories(contextDir);
+        Files.createDirectories(skillsDir);
         if (!Files.exists(memoryFile)) {
             objectMapper.writeValue(memoryFile.toFile(), new LinkedHashMap<>());
         }
@@ -57,9 +59,9 @@ public class ContextService {
     }
 
     public String readFile(String filename) {
-        var path = contextDir.resolve(filename).normalize();
-        if (!path.startsWith(contextDir)) {
-            return "Error: Cannot read files outside the context folder.";
+        var path = skillsDir.resolve(filename).normalize();
+        if (!path.startsWith(skillsDir)) {
+            return "Error: Cannot read files outside the skills folder.";
         }
         try {
             return Files.readString(path);
@@ -69,10 +71,9 @@ public class ContextService {
     }
 
     public List<String> listFiles() {
-        try (var stream = Files.list(contextDir)) {
+        try (var stream = Files.list(skillsDir)) {
             return stream
                     .filter(Files::isRegularFile)
-                    .filter(p -> !p.getFileName().toString().equals("memory.json"))
                     .map(p -> p.getFileName().toString())
                     .sorted()
                     .toList();
