@@ -1,5 +1,6 @@
 package com.programmersdiary.aidaemon.chat;
 
+import com.programmersdiary.aidaemon.mcp.McpService;
 import com.programmersdiary.aidaemon.provider.ChatModelFactory;
 import com.programmersdiary.aidaemon.provider.ProviderConfigRepository;
 import com.programmersdiary.aidaemon.scheduling.ScheduledJobExecutor;
@@ -29,6 +30,7 @@ public class ChatService {
     private final SkillsService skillsService;
     private final ScheduledJobExecutor jobExecutor;
     private final ShellAccessService shellAccessService;
+    private final McpService mcpService;
     private final String systemInstructions;
 
     public ChatService(ProviderConfigRepository configRepository,
@@ -36,12 +38,14 @@ public class ChatService {
                        SkillsService skillsService,
                        ScheduledJobExecutor jobExecutor,
                        ShellAccessService shellAccessService,
+                       McpService mcpService,
                        @Value("${aidaemon.system-instructions:}") String systemInstructions) {
         this.configRepository = configRepository;
         this.chatModelFactory = chatModelFactory;
         this.skillsService = skillsService;
         this.jobExecutor = jobExecutor;
         this.shellAccessService = shellAccessService;
+        this.mcpService = mcpService;
         this.systemInstructions = systemInstructions;
     }
 
@@ -52,6 +56,7 @@ public class ChatService {
         var tools = new ArrayList<>(Arrays.asList(
                 ToolCallbacks.from(new ChatTools(skillsService, jobExecutor, providerId))));
         tools.addAll(Arrays.asList(ToolCallbacks.from(new ShellTool(shellAccessService))));
+        tools.addAll(mcpService.getToolCallbacks());
         var chatModel = chatModelFactory.create(config, tools);
 
         var springMessages = new ArrayList<Message>();
@@ -82,6 +87,12 @@ public class ChatService {
                 sb.append("Skill files: ").append(String.join(", ", allFiles)).append("\n");
             }
             sb.append("\n");
+        }
+
+        var mcpServers = mcpService.getConnectedServers();
+        if (!mcpServers.isEmpty()) {
+            sb.append("Connected MCP servers: ").append(String.join(", ", mcpServers)).append("\n");
+            sb.append("MCP tools are available for use.\n\n");
         }
 
         if (!systemInstructions.isBlank()) {
