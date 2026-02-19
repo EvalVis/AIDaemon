@@ -2,7 +2,7 @@
 
 A lightweight AI framework built on Spring Boot 4 and Spring AI. Connect any LLM provider, extend capabilities with skills and MCPs, schedule autonomous jobs, and interact through REST or terminal -- all from a single self-hosted service.
 
-[Example use case](images/example.png)
+![Example use case](images/example.png)
 
 ## Architecture
 
