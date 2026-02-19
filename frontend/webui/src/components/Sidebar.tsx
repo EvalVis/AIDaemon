@@ -22,6 +22,16 @@ export default function Sidebar({
 }: SidebarProps) {
   const [showProviderForm, setShowProviderForm] = useState(false);
   const [showNewConv, setShowNewConv] = useState(false);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  const toggleExpand = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
 
   return (
     <aside className="sidebar">
@@ -48,25 +58,52 @@ export default function Sidebar({
       </div>
 
       <nav className="conversation-list">
-        {conversations.map((c) => (
-          <div
-            key={c.id}
-            className={`conversation-item${c.id === activeId ? ' active' : ''}`}
-            onClick={() => onSelectConversation(c.id)}
-          >
-            <span className="conv-name">{c.name}</span>
-            <span className="conv-count">{c.messages.length}</span>
-            <button
-              className="btn-delete-conv"
-              onClick={(e) => {
-                e.stopPropagation();
-                onDeleteConversation(c.id);
-              }}
-            >
-              &times;
-            </button>
-          </div>
-        ))}
+        {conversations.map((c) => {
+          const isExpanded = expanded.has(c.id);
+          const isActive = c.id === activeId;
+          return (
+            <div key={c.id} className={`conversation-entry${isActive ? ' active' : ''}`}>
+              <div
+                className="conversation-item"
+                onClick={() => onSelectConversation(c.id)}
+              >
+                <button
+                  className="btn-expand"
+                  onClick={(e) => toggleExpand(c.id, e)}
+                  title={isExpanded ? 'Collapse' : 'Expand'}
+                >
+                  {isExpanded ? '▾' : '▸'}
+                </button>
+                <span className="conv-name">{c.name}</span>
+                <span className="conv-count">{c.messages.length}</span>
+                <button
+                  className="btn-delete-conv"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDeleteConversation(c.id);
+                  }}
+                >
+                  &times;
+                </button>
+              </div>
+              {isExpanded && (
+                <div className="conv-preview">
+                  {c.messages.slice(-4).map((m, i) => (
+                    <div key={i} className={`conv-preview-msg ${m.role}`}>
+                      <span className="conv-preview-role">{m.role}</span>
+                      <span className="conv-preview-text">
+                        {m.content.slice(0, 80)}{m.content.length > 80 ? '…' : ''}
+                      </span>
+                    </div>
+                  ))}
+                  {c.messages.length === 0 && (
+                    <span className="conv-preview-empty">No messages</span>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
         {conversations.length === 0 && (
           <p className="empty-hint">No conversations yet</p>
         )}

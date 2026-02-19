@@ -150,10 +150,18 @@ body {
   padding: 8px 0;
 }
 
+.conversation-entry {
+  border-bottom: 1px solid transparent;
+}
+
+.conversation-entry.active > .conversation-item {
+  background: var(--bg-active);
+}
+
 .conversation-item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   padding: 10px 12px;
   cursor: pointer;
   transition: background 0.1s;
@@ -163,8 +171,52 @@ body {
   background: var(--bg-hover);
 }
 
-.conversation-item.active {
-  background: var(--bg-active);
+.btn-expand {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 0.75rem;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  flex-shrink: 0;
+  width: 14px;
+}
+
+.conv-preview {
+  padding: 4px 12px 8px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  background: var(--bg-sidebar);
+}
+
+.conv-preview-msg {
+  display: flex;
+  gap: 6px;
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.conv-preview-role {
+  color: var(--text-dim);
+  flex-shrink: 0;
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.625rem;
+  margin-top: 1px;
+}
+
+.conv-preview-text {
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conv-preview-empty {
+  font-size: 0.75rem;
+  color: var(--text-dim);
 }
 
 .conv-name {
@@ -222,14 +274,41 @@ body {
 }
 
 .chat-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   padding: 14px 20px;
   border-bottom: 1px solid var(--border);
 }
 
 .chat-header h2 {
+  flex: 1;
   font-size: 1rem;
   font-weight: 600;
   color: var(--text-bright);
+}
+
+.btn-toggle-tools {
+  padding: 4px 12px;
+  background: var(--bg-input);
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 0.75rem;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.btn-toggle-tools:hover {
+  border-color: var(--accent);
+  color: var(--text-bright);
+}
+
+.btn-toggle-tools.active {
+  background: var(--bg-active);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .messages {
@@ -276,28 +355,93 @@ body {
   opacity: 0.6;
 }
 
+.message.collapsed {
+  padding-bottom: 0;
+}
+
+.message-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.message-header:hover .btn-msg-toggle {
+  color: var(--text-bright);
+}
+
 .role-label {
-  display: block;
   font-size: 0.6875rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--text-dim);
-  margin-bottom: 4px;
+  flex-shrink: 0;
+}
+
+.message-preview {
+  flex: 1;
+  font-size: 0.8125rem;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.btn-msg-toggle {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 0.7rem;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  flex-shrink: 0;
+  margin-left: auto;
 }
 
 .message-content {
   color: var(--text-bright);
+  margin-top: 6px;
 }
 
 /* Chat input */
 
 .chat-input-area {
   display: flex;
+  align-items: flex-end;
   gap: 8px;
   padding: 12px 20px;
   border-top: 1px solid var(--border);
   background: var(--bg-sidebar);
+}
+
+.scroll-btns {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.btn-scroll {
+  width: 28px;
+  height: 28px;
+  background: var(--bg-input);
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 0.7rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+  padding: 0;
+}
+
+.btn-scroll:hover {
+  border-color: var(--accent);
+  color: var(--text-bright);
 }
 
 .chat-input-area textarea {
