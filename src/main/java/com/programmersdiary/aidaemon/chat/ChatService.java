@@ -55,13 +55,13 @@ public class ChatService {
                 .orElseThrow(() -> new IllegalArgumentException("Provider not found: " + providerId));
 
         var toolLog = new ArrayList<ChatMessage>();
-        var tools = new ArrayList<>(Arrays.asList(
-                ToolCallbacks.from(new ChatTools(skillsService, jobExecutor, providerId))));
-        tools.addAll(Arrays.asList(ToolCallbacks.from(new ShellTool(shellAccessService))));
-        tools.addAll(mcpService.getToolCallbacks());
-        var loggingTools = tools.stream()
-                .map(t -> (ToolCallback) new LoggingToolCallback(t, toolLog))
-                .toList();
+        var loggingTools = new ArrayList<ToolCallback>();
+        Arrays.asList(ToolCallbacks.from(new ChatTools(skillsService, jobExecutor, providerId)))
+                .forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog)));
+        Arrays.asList(ToolCallbacks.from(new ShellTool(shellAccessService)))
+                .forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog)));
+        mcpService.getToolCallbacksByServer().forEach((serverName, callbacks) ->
+                callbacks.forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog, serverName))));
         var chatModel = chatModelFactory.create(config, loggingTools);
 
         var springMessages = new ArrayList<Message>();

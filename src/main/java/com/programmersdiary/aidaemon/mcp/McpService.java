@@ -153,6 +153,15 @@ public class McpService {
         return List.of(provider.getToolCallbacks());
     }
 
+    public Map<String, List<ToolCallback>> getToolCallbacksByServer() {
+        var result = new java.util.LinkedHashMap<String, List<ToolCallback>>();
+        clients.forEach((serverName, client) -> {
+            var provider = new SyncMcpToolCallbackProvider(List.of(client));
+            result.put(serverName, List.of(provider.getToolCallbacks()));
+        });
+        return result;
+    }
+
     public List<String> getConnectedServers() {
         return List.copyOf(clients.keySet());
     }

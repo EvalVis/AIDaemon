@@ -11,10 +11,16 @@ public class LoggingToolCallback implements ToolCallback {
 
     private final ToolCallback delegate;
     private final List<ChatMessage> toolLog;
+    private final String serverName;
 
     public LoggingToolCallback(ToolCallback delegate, List<ChatMessage> toolLog) {
+        this(delegate, toolLog, null);
+    }
+
+    public LoggingToolCallback(ToolCallback delegate, List<ChatMessage> toolLog, String serverName) {
         this.delegate = delegate;
         this.toolLog = toolLog;
+        this.serverName = serverName;
     }
 
     @Override
@@ -42,8 +48,9 @@ public class LoggingToolCallback implements ToolCallback {
     }
 
     private void log(String input, String output) {
-        var name = delegate.getToolDefinition().name();
-        var content = "[" + name + "]\nInput: " + input + "\nOutput: " + output;
+        var toolName = delegate.getToolDefinition().name();
+        var label = serverName != null ? serverName + " > " + toolName : toolName;
+        var content = "[" + label + "]\nInput: " + input + "\nOutput: " + output;
         toolLog.add(new ChatMessage("tool", content));
     }
 }
