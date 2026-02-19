@@ -26,10 +26,11 @@ public class ConversationService {
         var conversation = conversationRepository.findById(conversationId)
                 .orElseThrow(() -> new IllegalArgumentException("Conversation not found: " + conversationId));
         conversation.messages().add(new ChatMessage("user", userMessage));
-        var response = chatService.chat(conversation.providerId(), conversation.messages());
-        conversation.messages().add(new ChatMessage("assistant", response));
+        var result = chatService.chat(conversation.providerId(), conversation.messages());
+        conversation.messages().addAll(result.toolMessages());
+        conversation.messages().add(new ChatMessage("assistant", result.response()));
         conversationRepository.save(conversation);
-        return response;
+        return result.response();
     }
 
     public Conversation get(String conversationId) {

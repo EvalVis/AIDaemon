@@ -14,6 +14,7 @@ import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.support.ToolCallbacks;
+import org.springframework.ai.tool.ToolCallback;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -49,24 +50,29 @@ public class ChatService {
         this.systemInstructions = systemInstructions;
     }
 
-    public String chat(String providerId, List<ChatMessage> messages) {
+    public ChatResult chat(String providerId, List<ChatMessage> messages) {
         var config = configRepository.findById(providerId)
                 .orElseThrow(() -> new IllegalArgumentException("Provider not found: " + providerId));
 
+        var toolLog = new ArrayList<ChatMessage>();
         var tools = new ArrayList<>(Arrays.asList(
                 ToolCallbacks.from(new ChatTools(skillsService, jobExecutor, providerId))));
         tools.addAll(Arrays.asList(ToolCallbacks.from(new ShellTool(shellAccessService))));
         tools.addAll(mcpService.getToolCallbacks());
-        var chatModel = chatModelFactory.create(config, tools);
+        var loggingTools = tools.stream()
+                .map(t -> (ToolCallback) new LoggingToolCallback(t, toolLog))
+                .toList();
+        var chatModel = chatModelFactory.create(config, loggingTools);
 
         var springMessages = new ArrayList<Message>();
         springMessages.add(new SystemMessage(buildSystemContext()));
         springMessages.addAll(messages.stream()
+                .filter(m -> !"tool".equals(m.role()))
                 .map(this::toSpringMessage)
                 .toList());
 
         var response = chatModel.call(new Prompt(springMessages));
-        return response.getResult().getOutput().getText();
+        return new ChatResult(response.getResult().getOutput().getText(), toolLog);
     }
 
     private String buildSystemContext() {

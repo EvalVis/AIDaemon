@@ -74,13 +74,13 @@ public class ScheduledJobExecutor {
     private void executeJob(ScheduledJob job) {
         try {
             var messages = List.of(new ChatMessage("user", job.instruction()));
-            var response = chatServiceProvider.getObject().chat(job.providerId(), messages);
-            var result = new JobResult(job.id(), job.description(), Instant.now(), response);
+            var chatResult = chatServiceProvider.getObject().chat(job.providerId(), messages);
+            var result = new JobResult(job.id(), job.description(), Instant.now(), chatResult.response());
             results.add(result);
             if (results.size() > MAX_RESULTS) {
                 results.removeFirst();
             }
-            log.info("Job '{}' executed: {}", job.description(), response);
+            log.info("Job '{}' executed: {}", job.description(), chatResult.response());
         } catch (Exception e) {
             log.error("Job '{}' failed: {}", job.description(), e.getMessage());
             results.add(new JobResult(job.id(), job.description(), Instant.now(), "ERROR: " + e.getMessage()));
