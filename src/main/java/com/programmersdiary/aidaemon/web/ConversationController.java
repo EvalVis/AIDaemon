@@ -21,8 +21,9 @@ public class ConversationController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public Map<String, String> create(@RequestBody Map<String, String> request) {
-        var conversation = conversationService.create(request.get("providerId"));
-        return Map.of("conversationId", conversation.id(), "providerId", conversation.providerId());
+        var name = request.getOrDefault("name", "Untitled");
+        var conversation = conversationService.create(name, request.get("providerId"));
+        return Map.of("conversationId", conversation.id(), "name", conversation.name(), "providerId", conversation.providerId());
     }
 
     @PostMapping("/{id}/messages")

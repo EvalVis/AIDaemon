@@ -1,5 +1,6 @@
 package com.programmersdiary.aidaemon.cli;
 
+import com.programmersdiary.aidaemon.chat.Conversation;
 import com.programmersdiary.aidaemon.chat.ConversationService;
 import com.programmersdiary.aidaemon.provider.ProviderConfigRepository;
 import com.programmersdiary.aidaemon.skills.ShellAccessService;
@@ -31,11 +32,10 @@ public class InteractiveCli implements CommandLineRunner {
 
         System.out.println("\n=== AI Daemon Interactive Chat ===\n");
 
-        var providerId = selectProvider(scanner);
-        if (providerId == null) return;
+        var conversation = chooseConversation(scanner);
+        if (conversation == null) return;
 
-        var conversation = conversationService.create(providerId);
-        System.out.println("Conversation started. Commands: /quit, /new, /shell\n");
+        System.out.println("Commands: /quit, /new, /shell\n");
 
         while (true) {
             System.out.print("You: ");
@@ -45,10 +45,8 @@ public class InteractiveCli implements CommandLineRunner {
             if (input.isEmpty()) continue;
             if (input.equalsIgnoreCase("/quit")) break;
             if (input.equalsIgnoreCase("/new")) {
-                providerId = selectProvider(scanner);
-                if (providerId == null) break;
-                conversation = conversationService.create(providerId);
-                System.out.println("New conversation started.\n");
+                conversation = chooseConversation(scanner);
+                if (conversation == null) break;
                 continue;
             }
             if (input.equalsIgnoreCase("/shell")) {
@@ -67,6 +65,66 @@ public class InteractiveCli implements CommandLineRunner {
         }
 
         System.out.println("Goodbye!");
+    }
+
+    private Conversation chooseConversation(Scanner scanner) {
+        System.out.println("  1) New conversation");
+        System.out.println("  2) Load conversation");
+        System.out.print("Select (number): ");
+        if (!scanner.hasNextLine()) return null;
+        var choice = scanner.nextLine().trim();
+
+        if ("2".equals(choice)) {
+            var loaded = loadConversation(scanner);
+            if (loaded != null) return loaded;
+        }
+
+        return createConversation(scanner);
+    }
+
+    private Conversation loadConversation(Scanner scanner) {
+        var existing = conversationService.listAll();
+        if (existing.isEmpty()) {
+            System.out.println("No saved conversations.\n");
+            return null;
+        }
+
+        System.out.println("Saved conversations:");
+        for (int i = 0; i < existing.size(); i++) {
+            var c = existing.get(i);
+            System.out.printf("  %d) %s (%d messages)%n", i + 1, c.name(), c.messages().size());
+        }
+
+        System.out.print("Select conversation (number): ");
+        if (!scanner.hasNextLine()) return null;
+        var choice = scanner.nextLine().trim();
+
+        try {
+            int index = Integer.parseInt(choice) - 1;
+            if (index >= 0 && index < existing.size()) {
+                var selected = existing.get(index);
+                System.out.println("Resumed \"" + selected.name() + "\"\n");
+                return selected;
+            }
+        } catch (NumberFormatException ignored) {
+        }
+
+        System.out.println("Invalid selection.\n");
+        return null;
+    }
+
+    private Conversation createConversation(Scanner scanner) {
+        var providerId = selectProvider(scanner);
+        if (providerId == null) return null;
+
+        System.out.print("Conversation name: ");
+        if (!scanner.hasNextLine()) return null;
+        var name = scanner.nextLine().trim();
+        if (name.isEmpty()) name = "Untitled";
+
+        var conversation = conversationService.create(name, providerId);
+        System.out.println("Conversation \"" + conversation.name() + "\" started.\n");
+        return conversation;
     }
 
     private String selectProvider(Scanner scanner) {
