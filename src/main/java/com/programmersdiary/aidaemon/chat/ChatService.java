@@ -71,8 +71,12 @@ public class ChatService {
                 .map(this::toSpringMessage)
                 .toList());
 
-        var response = chatModel.call(new Prompt(springMessages));
-        return new ChatResult(response.getResult().getOutput().getText(), toolLog);
+        try {
+            var response = chatModel.call(new Prompt(springMessages));
+            return new ChatResult(response.getResult().getOutput().getText(), toolLog);
+        } catch (Exception e) {
+            return new ChatResult("[Error] " + e.getMessage(), toolLog);
+        }
     }
 
     private String buildSystemContext() {
