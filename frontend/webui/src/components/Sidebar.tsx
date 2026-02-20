@@ -80,7 +80,9 @@ export default function Sidebar({
                   className="btn-delete-conv"
                   onClick={(e) => {
                     e.stopPropagation();
-                    onDeleteConversation(c.id);
+                    if (window.confirm(`Delete conversation "${c.name}"?`)) {
+                      onDeleteConversation(c.id);
+                    }
                   }}
                 >
                   &times;

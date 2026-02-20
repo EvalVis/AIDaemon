@@ -59,23 +59,26 @@ public class ConversationRepository {
     }
 
     public boolean deleteById(String id) {
-        boolean removed = conversations.remove(id) != null;
-        if (removed) {
-            try {
-                Files.deleteIfExists(conversationsDir.resolve(id + ".json"));
-            } catch (IOException e) {
-                throw new UncheckedIOException(e);
-            }
+        var conversation = conversations.remove(id);
+        if (conversation == null) return false;
+        try {
+            Files.deleteIfExists(conversationsDir.resolve(fileName(conversation)));
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
         }
-        return removed;
+        return true;
     }
 
     private void persist(Conversation conversation) {
         try {
             Files.createDirectories(conversationsDir);
-            objectMapper.writeValue(conversationsDir.resolve(conversation.name() + ".json").toFile(), conversation);
+            objectMapper.writeValue(conversationsDir.resolve(fileName(conversation)).toFile(), conversation);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
+    }
+
+    private String fileName(Conversation conversation) {
+        return conversation.name() + "_" + conversation.id() + ".json";
     }
 }
