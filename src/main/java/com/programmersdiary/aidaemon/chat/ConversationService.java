@@ -1,5 +1,7 @@
 package com.programmersdiary.aidaemon.chat;
 
+import com.programmersdiary.aidaemon.delegation.DelegationService;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -11,14 +13,23 @@ public class ConversationService {
 
     private final ChatService chatService;
     private final ConversationRepository conversationRepository;
+    private final ObjectProvider<DelegationService> delegationServiceProvider;
 
-    public ConversationService(ChatService chatService, ConversationRepository conversationRepository) {
+    public ConversationService(ChatService chatService,
+                               ConversationRepository conversationRepository,
+                               ObjectProvider<DelegationService> delegationServiceProvider) {
         this.chatService = chatService;
         this.conversationRepository = conversationRepository;
+        this.delegationServiceProvider = delegationServiceProvider;
     }
 
     public Conversation create(String name, String providerId) {
-        var conversation = new Conversation(UUID.randomUUID().toString(), name, providerId, new ArrayList<>());
+        return create(name, providerId, null);
+    }
+
+    public Conversation create(String name, String providerId, String parentConversationId) {
+        var conversation = new Conversation(
+                UUID.randomUUID().toString(), name, providerId, new ArrayList<>(), parentConversationId);
         return conversationRepository.save(conversation);
     }
 
@@ -26,10 +37,18 @@ public class ConversationService {
         var conversation = conversationRepository.findById(conversationId)
                 .orElseThrow(() -> new IllegalArgumentException("Conversation not found: " + conversationId));
         conversation.messages().add(new ChatMessage("user", userMessage));
-        var result = chatService.chat(conversation.providerId(), conversation.messages());
+        var result = chatService.chat(conversation.providerId(), conversation.messages(), conversationId);
         conversation.messages().addAll(result.toolMessages());
         conversation.messages().add(new ChatMessage("assistant", result.response()));
         conversationRepository.save(conversation);
+
+        if (!result.pendingSubConversationIds().isEmpty()) {
+            var delegationService = delegationServiceProvider.getIfAvailable();
+            if (delegationService != null) {
+                delegationService.startSubAgents(result.pendingSubConversationIds());
+            }
+        }
+
         return result.response();
     }
 

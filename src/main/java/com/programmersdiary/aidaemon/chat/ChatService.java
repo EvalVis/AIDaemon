@@ -1,5 +1,6 @@
 package com.programmersdiary.aidaemon.chat;
 
+import com.programmersdiary.aidaemon.delegation.DelegationTools;
 import com.programmersdiary.aidaemon.mcp.McpService;
 import com.programmersdiary.aidaemon.provider.ChatModelFactory;
 import com.programmersdiary.aidaemon.provider.ProviderConfigRepository;
@@ -21,7 +22,6 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.stream.Collectors;
 
 @Service
 public class ChatService {
@@ -32,7 +32,9 @@ public class ChatService {
     private final ScheduledJobExecutor jobExecutor;
     private final ShellAccessService shellAccessService;
     private final McpService mcpService;
+    private final ConversationRepository conversationRepository;
     private final String systemInstructions;
+    private final boolean delegationEnabled;
 
     public ChatService(ProviderConfigRepository configRepository,
                        ChatModelFactory chatModelFactory,
@@ -40,17 +42,27 @@ public class ChatService {
                        ScheduledJobExecutor jobExecutor,
                        ShellAccessService shellAccessService,
                        McpService mcpService,
-                       @Value("${aidaemon.system-instructions:}") String systemInstructions) {
+                       ConversationRepository conversationRepository,
+                       @Value("${aidaemon.system-instructions:}") String systemInstructions,
+                       @Value("${aidaemon.delegation-enabled:false}") boolean delegationEnabled,
+                       @Value("${aidaemon.delegation-threshold-seconds:30}") int delegationThresholdSeconds) {
         this.configRepository = configRepository;
         this.chatModelFactory = chatModelFactory;
         this.skillsService = skillsService;
         this.jobExecutor = jobExecutor;
         this.shellAccessService = shellAccessService;
         this.mcpService = mcpService;
-        this.systemInstructions = systemInstructions;
+        this.conversationRepository = conversationRepository;
+        this.systemInstructions = systemInstructions
+                .replace("{threshold}", String.valueOf(delegationThresholdSeconds));
+        this.delegationEnabled = delegationEnabled;
     }
 
     public ChatResult chat(String providerId, List<ChatMessage> messages) {
+        return chat(providerId, messages, null);
+    }
+
+    public ChatResult chat(String providerId, List<ChatMessage> messages, String conversationId) {
         var config = configRepository.findById(providerId)
                 .orElseThrow(() -> new IllegalArgumentException("Provider not found: " + providerId));
 
@@ -62,10 +74,21 @@ public class ChatService {
                 .forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog)));
         mcpService.getToolCallbacksByServer().forEach((serverName, callbacks) ->
                 callbacks.forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog, serverName))));
+
+        DelegationTools delegationTools = null;
+        boolean isSubConversation = false;
+        if (delegationEnabled && conversationId != null) {
+            var conversation = conversationRepository.findById(conversationId).orElse(null);
+            isSubConversation = conversation != null && conversation.parentConversationId() != null;
+            delegationTools = new DelegationTools(conversationRepository, conversationId, providerId);
+            Arrays.asList(ToolCallbacks.from(delegationTools))
+                    .forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog)));
+        }
+
         var chatModel = chatModelFactory.create(config, loggingTools);
 
         var springMessages = new ArrayList<Message>();
-        springMessages.add(new SystemMessage(buildSystemContext()));
+        springMessages.add(new SystemMessage(buildSystemContext(isSubConversation)));
         springMessages.addAll(messages.stream()
                 .filter(m -> !"tool".equals(m.role()))
                 .map(this::toSpringMessage)
@@ -73,13 +96,15 @@ public class ChatService {
 
         try {
             var response = chatModel.call(new Prompt(springMessages));
-            return new ChatResult(response.getResult().getOutput().getText(), toolLog);
+            var pendingIds = delegationTools != null
+                    ? delegationTools.getPendingSubConversationIds() : List.<String>of();
+            return new ChatResult(response.getResult().getOutput().getText(), toolLog, pendingIds);
         } catch (Exception e) {
-            return new ChatResult("[Error] " + e.getMessage(), toolLog);
+            return new ChatResult("[Error] " + e.getMessage(), toolLog, List.of());
         }
     }
 
-    private String buildSystemContext() {
+    private String buildSystemContext(boolean isSubConversation) {
         var sb = new StringBuilder();
 
         var memory = skillsService.readMemory();
@@ -105,6 +130,11 @@ public class ChatService {
             sb.append("MCP tools are available for use.\n\n");
         }
 
+        if (isSubConversation) {
+            sb.append("You are a sub-agent working on a specific subtask delegated from a parent agent. ")
+                .append("Focus entirely on your assigned task and provide a thorough, complete response.");
+        }
+
         if (!systemInstructions.isBlank()) {
             sb.append(systemInstructions);
         }
@@ -119,4 +149,5 @@ public class ChatService {
             default -> new UserMessage(message.content());
         };
     }
+
 }

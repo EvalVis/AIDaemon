@@ -48,6 +48,12 @@ public class ConversationRepository {
         return List.copyOf(conversations.values());
     }
 
+    public List<Conversation> findByParentId(String parentId) {
+        return conversations.values().stream()
+                .filter(c -> parentId.equals(c.parentConversationId()))
+                .toList();
+    }
+
     public Optional<Conversation> findById(String id) {
         return Optional.ofNullable(conversations.get(id));
     }

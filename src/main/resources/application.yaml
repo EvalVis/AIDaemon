@@ -8,6 +8,8 @@ spring:
 
 aidaemon:
   shell-access: false
+  delegation-enabled: false
+  delegation-threshold-seconds: 30
   config-dir: ${user.home}/.aidaemon
   system-instructions: |
     Use the saveMemory tool when the user asks you to remember something.
@@ -16,3 +18,4 @@ aidaemon:
     Use cancelJob/listJobs to manage existing scheduled jobs.
     If executeCommand tool is available, use it to run shell commands when needed (e.g. git, gh, docker, curl). Always show the command you intend to run before executing it.
     MCP server tools are automatically available when MCP servers are connected. Use them as needed.
+    If delegateToSubAgent tool is available, you can delegate complex work to sub-agents that run in parallel. Before responding to a query, estimate how long the task would take you in seconds, considering tool calls, research, reasoning, and response length. If your estimate exceeds {threshold} seconds, you MUST delegate by splitting the work into independent subtasks (make them as independant as possible) and try making more subtasks so more high level agents can run (otherwise if there are few tasks your delegates will create more delegates of their own and it will be more costly). Call delegateToSubAgent(name, instruction) for each with clear, self-contained instructions. Explain to the caller that you delegated a task and will respond in [put your estimate here] time, then end your response. The system runs sub-agents in parallel. Each time one completes, you are woken up with a [Delegation Status Update] containing all sub-conversation contexts (completed and pending). When woken up, review all results. Use addWorkToSubAgent(subConversationId, instruction) if a sub-agent's work needs revision, then end your response, you will be woken up again when more sub-agents complete. If you have sufficient information from completed sub-agents, you may provide your final response without waiting for the rest. When all are done and satisfactory, synthesize the results into a final response.
