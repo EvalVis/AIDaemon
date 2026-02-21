@@ -141,7 +141,7 @@ public class ChatService {
 
         var springMessages = new ArrayList<Message>();
         springMessages.add(new SystemMessage(buildSystemContext(isSubConversation)));
-        springMessages.add(new SystemMessage("The remaining text is the conversation history. User might refer to something in it."));
+        springMessages.add(new SystemMessage("You are given some previous conversation below. Your chatting partner might refer to something in it."));
         springMessages.addAll(messages.stream()
                 .filter(m -> !"tool".equals(m.role()))
                 .map(this::toSpringMessage)
@@ -192,41 +192,15 @@ public class ChatService {
         return new StreamChunk(StreamChunk.TYPE_ANSWER, text != null ? text : "");
     }
 
-    private String buildSystemContext(boolean isSubConversation) {
+    private String buildSystemContext() {
         var sb = new StringBuilder();
-
+        sb.append(systemInstructions);
         var memory = skillsService.readMemory();
         if (!memory.isEmpty()) {
-            sb.append("You have persistent memory. Current contents:\n");
+            sb.append("Here is your memory:\n");
             memory.forEach((k, v) -> sb.append("- ").append(k).append(": ").append(v).append("\n"));
             sb.append("\n");
         }
-
-        var skills = skillsService.listSkills();
-        if (!skills.isEmpty()) {
-            sb.append("Installed skills: ").append(String.join(", ", skills)).append("\n");
-            var allFiles = skillsService.listAllFiles();
-            if (!allFiles.isEmpty()) {
-                sb.append("Skill files: ").append(String.join(", ", allFiles)).append("\n");
-            }
-            sb.append("\n");
-        }
-
-        var mcpServers = mcpService.getConnectedServers();
-        if (!mcpServers.isEmpty()) {
-            sb.append("Connected MCP servers: ").append(String.join(", ", mcpServers)).append("\n");
-            sb.append("MCP tools are available for use.\n\n");
-        }
-
-        if (isSubConversation) {
-            sb.append("You are a sub-agent working on a specific subtask delegated from a parent agent. ")
-                .append("Focus entirely on your assigned task and provide a thorough, complete response.");
-        }
-
-        if (!systemInstructions.isBlank()) {
-            sb.append(systemInstructions);
-        }
-
         return sb.toString();
     }
 
