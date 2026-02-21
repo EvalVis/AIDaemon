@@ -81,14 +81,14 @@ export default function Sidebar({
     const isExpanded =
       !collapsed.has(node.id) && (expanded.has(node.id) || autoExpanded);
     return (
-      <div
-        key={node.id}
-        className={`conversation-entry${isSub ? ' subconversation' : ''}${isActive ? ' active' : ''}`}
-      >
-        <div className="conversation-item" onClick={() => onSelectConversation(node.id)}>
+      <div key={node.id}>
+        <div
+          className={`flex items-center gap-1.5 px-3 py-2.5 cursor-pointer transition-colors duration-100 ${isSub ? 'pl-3' : ''} ${isActive ? 'bg-bg-active' : 'hover:bg-bg-hover'}`}
+          onClick={() => onSelectConversation(node.id)}
+        >
           {hasChildren ? (
             <button
-              className="btn-expand"
+              className="bg-transparent border-0 text-text-dim text-xs cursor-pointer p-0 leading-none shrink-0 w-3.5"
               onClick={(e) => toggleExpand(node.id, e, isExpanded)}
               title={isExpanded ? 'Collapse' : 'Expand'}
             >
@@ -96,19 +96,21 @@ export default function Sidebar({
             </button>
           ) : !isSub ? (
             <button
-              className="btn-expand"
+              className="bg-transparent border-0 text-text-dim text-xs cursor-pointer p-0 leading-none shrink-0 w-3.5"
               onClick={(e) => toggleExpand(node.id, e, expanded.has(node.id))}
               title={expanded.has(node.id) ? 'Collapse' : 'Expand'}
             >
               {expanded.has(node.id) ? '▾' : '▸'}
             </button>
           ) : (
-            <span className="btn-expand-placeholder" />
+            <span className="w-3.5 shrink-0 inline-block" />
           )}
-          <span className="conv-name">{node.name}</span>
-          <span className="conv-count">{node.messages.length}</span>
+          <span className={`flex-1 text-sm whitespace-nowrap overflow-hidden text-ellipsis ${isSub ? 'text-[0.8125rem] text-text' : 'text-text-bright'}`}>
+            {node.name}
+          </span>
+          <span className="text-xs text-text-dim min-w-5 text-right">{node.messages.length}</span>
           <button
-            className="btn-delete-conv"
+            className="bg-transparent border-0 text-text-dim text-base cursor-pointer py-0 px-1 leading-none transition-colors duration-150 hover:text-danger"
             onClick={(e) => {
               e.stopPropagation();
               if (window.confirm(`Delete conversation "${node.name}"?`)) {
@@ -120,23 +122,23 @@ export default function Sidebar({
           </button>
         </div>
         {hasChildren && isExpanded && (
-          <div className="subconversation-list">
+          <div className="border-l-2 border-border ml-1.5">
             {node.children.map((child) => renderConversation(child, true))}
           </div>
         )}
         {!hasChildren && !isSub && expanded.has(node.id) && (
-          <div className="conv-preview">
+          <div className="py-1 px-3 pb-2 pl-8 flex flex-col gap-0.5 bg-bg-sidebar">
             {node.messages.slice(-4).map((m, i) => (
-              <div key={i} className={`conv-preview-msg ${m.role}`}>
-                <span className="conv-preview-role">{m.role}</span>
-                <span className="conv-preview-text">
+              <div key={i} className="flex gap-1.5 text-xs leading-snug">
+                <span className="text-text-dim shrink-0 font-semibold uppercase text-[0.625rem] mt-px">{m.role}</span>
+                <span className="text-text overflow-hidden text-ellipsis whitespace-nowrap">
                   {typeof m.content === 'string' ? m.content.slice(0, 80) : ''}
                   {typeof m.content === 'string' && m.content.length > 80 ? '…' : ''}
                 </span>
               </div>
             ))}
             {node.messages.length === 0 && (
-              <span className="conv-preview-empty">No messages</span>
+              <span className="text-xs text-text-dim">No messages</span>
             )}
           </div>
         )}
@@ -145,7 +147,7 @@ export default function Sidebar({
   };
 
   return (
-    <aside className="sidebar">
+    <aside className="w-[280px] min-w-[280px] bg-bg-sidebar border-r border-border flex flex-col overflow-hidden">
       <ProviderButton
         show={showProviderForm}
         onToggle={() => setShowProviderForm(!showProviderForm)}
@@ -153,8 +155,11 @@ export default function Sidebar({
         onAdd={onAddProvider}
       />
 
-      <div className="sidebar-section">
-        <button className="btn-new-conv" onClick={() => setShowNewConv(!showNewConv)}>
+      <div className="p-3 border-b border-border">
+        <button
+          className="w-full py-2 px-3 bg-bg-input text-text-bright border border-border rounded-lg cursor-pointer text-sm transition-colors duration-150 hover:bg-bg-hover"
+          onClick={() => setShowNewConv(!showNewConv)}
+        >
           + New Conversation
         </button>
         {showNewConv && (
@@ -168,10 +173,10 @@ export default function Sidebar({
         )}
       </div>
 
-      <nav className="conversation-list">
+      <nav className="flex-1 overflow-y-auto py-2">
         {tree.map((root) => renderConversation(root, false))}
         {tree.length === 0 && (
-          <p className="empty-hint">No conversations yet</p>
+          <p className="text-center py-6 px-3 text-text-dim text-[0.8125rem]">No conversations yet</p>
         )}
       </nav>
     </aside>
@@ -206,29 +211,64 @@ function ProviderButton({
   };
 
   return (
-    <div className="sidebar-section provider-section">
-      <button className="btn-add-provider" onClick={onToggle}>
+    <div className="p-3 border-b border-border">
+      <button
+        className="w-full py-2 px-3 bg-bg-input text-text-bright border border-border rounded-lg cursor-pointer text-sm transition-colors duration-150 hover:bg-bg-hover"
+        onClick={onToggle}
+      >
         {show ? 'Cancel' : '+ Add Provider'}
       </button>
       {show && (
-        <div className="provider-form">
-          <input placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} />
-          <select value={type} onChange={(e) => setType(e.target.value)}>
+        <div className="flex flex-col gap-1.5 mt-2">
+          <input
+            placeholder="Name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="p-1.5 px-2.5 bg-bg-input text-text border border-border rounded-lg text-[0.8125rem] outline-none focus:border-accent"
+          />
+          <select
+            value={type}
+            onChange={(e) => setType(e.target.value)}
+            className="p-1.5 px-2.5 bg-bg-input text-text border border-border rounded-lg text-[0.8125rem] outline-none focus:border-accent"
+          >
             <option value="OPENAI">OpenAI</option>
             <option value="ANTHROPIC">Anthropic</option>
             <option value="OLLAMA">Ollama</option>
             <option value="GEMINI">Gemini</option>
           </select>
-          <input placeholder="API Key" type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} />
-          <input placeholder="Base URL (optional)" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} />
-          <input placeholder="Model (optional)" value={model} onChange={(e) => setModel(e.target.value)} />
-          <button className="btn-submit" onClick={handleSubmit}>Add</button>
+          <input
+            placeholder="API Key"
+            type="password"
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            className="p-1.5 px-2.5 bg-bg-input text-text border border-border rounded-lg text-[0.8125rem] outline-none focus:border-accent"
+          />
+          <input
+            placeholder="Base URL (optional)"
+            value={baseUrl}
+            onChange={(e) => setBaseUrl(e.target.value)}
+            className="p-1.5 px-2.5 bg-bg-input text-text border border-border rounded-lg text-[0.8125rem] outline-none focus:border-accent"
+          />
+          <input
+            placeholder="Model (optional)"
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+            className="p-1.5 px-2.5 bg-bg-input text-text border border-border rounded-lg text-[0.8125rem] outline-none focus:border-accent"
+          />
+          <button
+            className="py-1.5 px-3 bg-accent text-white border-0 rounded-lg cursor-pointer text-[0.8125rem] transition-colors duration-150 hover:bg-accent-hover"
+            onClick={handleSubmit}
+          >
+            Add
+          </button>
         </div>
       )}
       {providers.length > 0 && (
-        <div className="provider-list">
+        <div className="flex flex-wrap gap-1 mt-2">
           {providers.map((p) => (
-            <span key={p.id} className="provider-tag">{p.name} ({p.model})</span>
+            <span key={p.id} className="text-xs text-text-dim bg-bg-input py-0.5 px-2 rounded-xl">
+              {p.name} ({p.model})
+            </span>
           ))}
         </div>
       )}
@@ -247,7 +287,7 @@ function NewConversationForm({
   const [providerId, setProviderId] = useState(providers[0]?.id ?? '');
 
   return (
-    <div className="new-conv-form">
+    <div className="flex flex-col gap-1.5 mt-2">
       <input
         placeholder="Conversation name"
         value={name}
@@ -255,13 +295,21 @@ function NewConversationForm({
         onKeyDown={(e) => {
           if (e.key === 'Enter' && name && providerId) onCreate(name, providerId);
         }}
+        className="p-1.5 px-2.5 bg-bg-input text-text border border-border rounded-lg text-[0.8125rem] outline-none focus:border-accent"
       />
-      <select value={providerId} onChange={(e) => setProviderId(e.target.value)}>
+      <select
+        value={providerId}
+        onChange={(e) => setProviderId(e.target.value)}
+        className="p-1.5 px-2.5 bg-bg-input text-text border border-border rounded-lg text-[0.8125rem] outline-none focus:border-accent"
+      >
         {providers.map((p) => (
           <option key={p.id} value={p.id}>{p.name}</option>
         ))}
       </select>
-      <button className="btn-submit" onClick={() => name && providerId && onCreate(name, providerId)}>
+      <button
+        className="py-1.5 px-3 bg-accent text-white border-0 rounded-lg cursor-pointer text-[0.8125rem] transition-colors duration-150 hover:bg-accent-hover"
+        onClick={() => name && providerId && onCreate(name, providerId)}
+      >
         Create
       </button>
     </div>

@@ -29,27 +29,50 @@ function MessageEntry({ msg }: { msg: DisplayMessage }) {
   const timeStr = 'timestampMillis' in msg && msg.timestampMillis != null && msg.timestampMillis > 0
     ? formatTime(msg.timestampMillis) : null;
 
+  const messageStyles =
+    msg.role === 'user'
+      ? 'max-w-[80%] py-2.5 px-3.5 rounded-lg text-sm leading-relaxed whitespace-pre-wrap break-words self-end bg-user-bg text-text-bright'
+      : msg.role === 'tool'
+        ? 'max-w-[90%] py-2.5 px-3.5 rounded-lg text-xs leading-relaxed whitespace-pre-wrap break-words self-start bg-tool-bg border border-tool-border font-mono'
+        : 'max-w-[80%] py-2.5 px-3.5 rounded-lg text-sm leading-relaxed whitespace-pre-wrap break-words self-start bg-assistant-bg border border-border';
+
   return (
-    <div className={`message ${msg.role}${collapsed ? ' collapsed' : ''}`}>
-      <div className="message-header" onClick={() => setCollapsed((v) => !v)}>
-        <span className="role-label">{msg.role}</span>
-        {timeStr != null && <span className="message-time">{timeStr}</span>}
-        {collapsed && <span className="message-preview">{preview}</span>}
-        <button className="btn-msg-toggle" title={collapsed ? 'Expand' : 'Collapse'}>
+    <div className={`${messageStyles}${collapsed ? ' pb-0' : ''}`}>
+      <div
+        className="flex items-baseline gap-2 cursor-pointer select-none"
+        onClick={() => setCollapsed((v) => !v)}
+      >
+        <span className="text-[0.6875rem] font-semibold uppercase tracking-wide text-text-dim shrink-0">
+          {msg.role}
+        </span>
+        {timeStr != null && (
+          <span className="text-[0.6875rem] tabular-nums text-text-dim opacity-85">{timeStr}</span>
+        )}
+        {collapsed && (
+          <span className="flex-1 text-[0.8125rem] text-text-dim whitespace-nowrap overflow-hidden text-ellipsis">
+            {preview}
+          </span>
+        )}
+        <button
+          className="bg-transparent border-0 text-text-dim text-[0.7rem] cursor-pointer p-0 leading-none shrink-0 ml-auto hover:text-text-bright"
+          title={collapsed ? 'Expand' : 'Collapse'}
+        >
           {collapsed ? '▸' : '▾'}
         </button>
       </div>
       {!collapsed && (
-        <div className="message-content">
+        <div className="text-text-bright mt-1.5 min-w-0 break-words">
           {hasParts
             ? (msg as { role: 'assistant'; parts: StreamPart[] }).parts.map((part, i) =>
                 part.type === 'tool' ? (
-                  <details key={i} className="message-tool-part" open>
-                    <summary>
+                  <details key={i} className="message-tool-part my-2 py-2 px-2.5 bg-tool-bg border border-tool-border rounded-lg text-tool-text max-w-full overflow-hidden" open>
+                    <summary className="flex items-center gap-2 cursor-pointer text-xs font-semibold uppercase text-tool-summary list-none [&::-webkit-details-marker]:hidden [&::marker]:hidden">
                       <span>Tool</span>
-                      <span className="btn-msg-toggle" />
+                      <span className="btn-msg-toggle ml-auto shrink-0 text-[0.7rem] text-tool-summary leading-none" />
                     </summary>
-                    <pre className="tool-content">{part.content}</pre>
+                    <pre className="mt-1.5 font-mono text-xs text-tool-text whitespace-pre-wrap break-words max-w-full overflow-x-auto overflow-y-hidden">
+                      {part.content}
+                    </pre>
                   </details>
                 ) : (
                   <span key={i}>{part.content}</span>
@@ -124,18 +147,22 @@ export default function ChatWindow({ conversation, sending, streaming, lastStrea
 
   if (!conversation) {
     return (
-      <main className="chat-window empty">
+      <main className="flex-1 flex flex-col min-w-0 flex items-center justify-center text-text-dim text-base">
         <p>Select or create a conversation to start chatting</p>
       </main>
     );
   }
 
   return (
-    <main className="chat-window">
-      <header className="chat-header">
-        <h2>{conversation.name}</h2>
+    <main className="flex-1 flex flex-col min-w-0">
+      <header className="flex items-center gap-3 py-3.5 px-5 border-b border-border">
+        <h2 className="flex-1 text-base font-semibold text-text-bright">{conversation.name}</h2>
         <button
-          className={`btn-toggle-tools${hideTools ? ' active' : ''}`}
+          className={`py-1 px-3 border rounded-lg cursor-pointer text-xs transition-all duration-150 whitespace-nowrap ${
+            hideTools
+              ? 'bg-bg-active border-accent text-accent'
+              : 'bg-bg-input text-text-dim border-border hover:border-accent hover:text-text-bright'
+          }`}
           onClick={() => setHideTools((v) => !v)}
           title={hideTools ? 'Show tool logs' : 'Hide tool logs'}
         >
@@ -143,39 +170,49 @@ export default function ChatWindow({ conversation, sending, streaming, lastStrea
         </button>
       </header>
 
-      <div className="messages" ref={messagesRef}>
+      <div className="flex-1 overflow-y-auto py-4 px-5 flex flex-col gap-3" ref={messagesRef}>
         <div ref={topRef} />
         {visibleMessages.map((msg, i) => (
           <MessageEntry key={i} msg={msg} />
         ))}
         {sending && (
-          <div className="message assistant streaming">
-            <div className="message-header">
-              <span className="role-label">assistant</span>
+          <div className="max-w-[80%] py-2.5 px-3.5 rounded-lg text-sm leading-relaxed self-start bg-assistant-bg border border-border opacity-95">
+            <div className="flex items-baseline gap-2 cursor-pointer select-none">
+              <span className="text-[0.6875rem] font-semibold uppercase tracking-wide text-text-dim shrink-0">
+                assistant
+              </span>
             </div>
-            <div className="message-content">
+            <div className="text-text-bright mt-1.5 min-w-0 break-words">
               {streaming?.reasoning ? (
-                <details className="streaming-reasoning" open>
-                  <summary>Thinking</summary>
-                  <pre className="reasoning-text">{streaming.reasoning}</pre>
+                <details className="mb-2" open>
+                  <summary className="cursor-pointer text-text-dim text-xs font-semibold uppercase">
+                    Thinking
+                  </summary>
+                  <pre className="mt-1.5 p-2 bg-bg rounded-lg text-xs text-text-dim whitespace-pre-wrap break-words max-h-[200px] overflow-y-auto">
+                    {streaming.reasoning}
+                  </pre>
                 </details>
               ) : null}
-              {(streaming?.reasoning && streaming.parts.length > 0) ? <div className="streaming-divider" /> : null}
+              {streaming?.reasoning && streaming.parts.length > 0 ? (
+                <div className="h-px bg-border my-2" />
+              ) : null}
               {streaming?.parts.map((part, i) =>
                 part.type === 'tool' ? (
-                  <details key={i} className="message-tool-part" open>
-                    <summary>
+                  <details key={i} className="message-tool-part my-2 py-2 px-2.5 bg-tool-bg border border-tool-border rounded-lg text-tool-text max-w-full overflow-hidden" open>
+                    <summary className="flex items-center gap-2 cursor-pointer text-xs font-semibold uppercase text-tool-summary list-none [&::-webkit-details-marker]:hidden [&::marker]:hidden">
                       <span>Tool</span>
-                      <span className="btn-msg-toggle" />
+                      <span className="btn-msg-toggle ml-auto shrink-0 text-[0.7rem] text-tool-summary leading-none" />
                     </summary>
-                    <pre className="tool-content">{part.content}</pre>
+                    <pre className="mt-1.5 font-mono text-xs text-tool-text whitespace-pre-wrap break-words max-w-full overflow-x-auto overflow-y-hidden">
+                      {part.content}
+                    </pre>
                   </details>
                 ) : (
-                  <span key={i} className="streaming-answer">{part.content}</span>
+                  <span key={i} className="whitespace-pre-wrap break-words">{part.content}</span>
                 )
               )}
               {streaming && streaming.parts.length === 0 && !streaming.reasoning && (
-                <span className="streaming-answer">Thinking…</span>
+                <span className="whitespace-pre-wrap break-words">Thinking…</span>
               )}
             </div>
           </div>
@@ -183,10 +220,22 @@ export default function ChatWindow({ conversation, sending, streaming, lastStrea
         <div ref={bottomRef} />
       </div>
 
-      <div className="chat-input-area">
-        <div className="scroll-btns">
-          <button className="btn-scroll" onClick={scrollToTop} title="Scroll to top">▲</button>
-          <button className="btn-scroll" onClick={scrollToBottom} title="Scroll to bottom">▼</button>
+      <div className="flex items-end gap-2 py-3 px-5 border-t border-border bg-bg-sidebar">
+        <div className="flex flex-col gap-1">
+          <button
+            className="w-7 h-7 bg-bg-input text-text-dim border border-border rounded-lg cursor-pointer text-[0.7rem] flex items-center justify-center transition-all duration-150 hover:border-accent hover:text-text-bright p-0"
+            onClick={scrollToTop}
+            title="Scroll to top"
+          >
+            ▲
+          </button>
+          <button
+            className="w-7 h-7 bg-bg-input text-text-dim border border-border rounded-lg cursor-pointer text-[0.7rem] flex items-center justify-center transition-all duration-150 hover:border-accent hover:text-text-bright p-0"
+            onClick={scrollToBottom}
+            title="Scroll to bottom"
+          >
+            ▼
+          </button>
         </div>
         <textarea
           value={input}
@@ -200,8 +249,13 @@ export default function ChatWindow({ conversation, sending, streaming, lastStrea
           placeholder="Type a message… (Enter to send, Shift+Enter for newline)"
           disabled={sending}
           rows={2}
+          className="flex-1 py-2.5 px-3.5 bg-bg-input text-text border border-border rounded-lg font-inherit text-sm resize-none outline-none leading-normal focus:border-accent"
         />
-        <button className="btn-send" onClick={handleSend} disabled={sending || !input.trim()}>
+        <button
+          className="py-2.5 px-5 bg-accent text-white border-0 rounded-lg cursor-pointer text-sm font-medium transition-colors duration-150 self-end hover:bg-accent-hover disabled:opacity-40 disabled:cursor-not-allowed"
+          onClick={handleSend}
+          disabled={sending || !input.trim()}
+        >
           Send
         </button>
       </div>

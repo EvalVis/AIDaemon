@@ -119,7 +119,7 @@ export default function App() {
   };
 
   return (
-    <div className="app-layout">
+    <div className="flex h-screen">
       <Sidebar
         providers={providers}
         conversations={conversations}
