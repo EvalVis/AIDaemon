@@ -54,7 +54,7 @@ function MessageEntry({ msg }: { msg: DisplayMessage }) {
           </span>
         )}
         <button
-          className="bg-transparent border-0 text-text-dim text-[0.7rem] cursor-pointer p-0 leading-none shrink-0 ml-auto hover:text-text-bright"
+          className="flex items-center justify-center w-6 h-6 shrink-0 ml-auto rounded-md border border-border bg-bg-input/60 text-text-dim text-[0.65rem] font-medium cursor-pointer transition-all duration-150 hover:border-accent hover:text-accent hover:bg-bg-hover"
           title={collapsed ? 'Expand' : 'Collapse'}
         >
           {collapsed ? '▸' : '▾'}
@@ -68,7 +68,7 @@ function MessageEntry({ msg }: { msg: DisplayMessage }) {
                   <details key={i} className="message-tool-part my-2 py-2 px-2.5 bg-tool-bg border border-tool-border rounded-lg text-tool-text max-w-full overflow-hidden" open>
                     <summary className="flex items-center gap-2 cursor-pointer text-xs font-semibold uppercase text-tool-summary list-none [&::-webkit-details-marker]:hidden [&::marker]:hidden">
                       <span>Tool</span>
-                      <span className="btn-msg-toggle ml-auto shrink-0 text-[0.7rem] text-tool-summary leading-none" />
+                      <span className="btn-msg-toggle flex items-center justify-center w-6 h-6 ml-auto shrink-0 rounded-md border border-tool-border bg-tool-bg/80 text-[0.65rem] font-medium leading-none transition-all duration-150 hover:border-tool-summary hover:opacity-90" />
                     </summary>
                     <pre className="mt-1.5 font-mono text-xs text-tool-text whitespace-pre-wrap break-words max-w-full overflow-x-auto overflow-y-hidden">
                       {part.content}
@@ -201,7 +201,7 @@ export default function ChatWindow({ conversation, sending, streaming, lastStrea
                   <details key={i} className="message-tool-part my-2 py-2 px-2.5 bg-tool-bg border border-tool-border rounded-lg text-tool-text max-w-full overflow-hidden" open>
                     <summary className="flex items-center gap-2 cursor-pointer text-xs font-semibold uppercase text-tool-summary list-none [&::-webkit-details-marker]:hidden [&::marker]:hidden">
                       <span>Tool</span>
-                      <span className="btn-msg-toggle ml-auto shrink-0 text-[0.7rem] text-tool-summary leading-none" />
+                      <span className="btn-msg-toggle flex items-center justify-center w-6 h-6 ml-auto shrink-0 rounded-md border border-tool-border bg-tool-bg/80 text-[0.65rem] font-medium leading-none transition-all duration-150 hover:border-tool-summary hover:opacity-90" />
                     </summary>
                     <pre className="mt-1.5 font-mono text-xs text-tool-text whitespace-pre-wrap break-words max-w-full overflow-x-auto overflow-y-hidden">
                       {part.content}

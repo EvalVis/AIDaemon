@@ -88,7 +88,7 @@ export default function Sidebar({
         >
           {hasChildren ? (
             <button
-              className="bg-transparent border-0 text-text-dim text-xs cursor-pointer p-0 leading-none shrink-0 w-3.5"
+              className="flex items-center justify-center w-6 h-6 shrink-0 rounded-md border border-border bg-bg-input/60 text-text-dim text-[0.65rem] font-medium cursor-pointer transition-all duration-150 hover:border-accent hover:text-accent hover:bg-bg-hover"
               onClick={(e) => toggleExpand(node.id, e, isExpanded)}
               title={isExpanded ? 'Collapse' : 'Expand'}
             >
@@ -96,14 +96,14 @@ export default function Sidebar({
             </button>
           ) : !isSub ? (
             <button
-              className="bg-transparent border-0 text-text-dim text-xs cursor-pointer p-0 leading-none shrink-0 w-3.5"
+              className="flex items-center justify-center w-6 h-6 shrink-0 rounded-md border border-border bg-bg-input/60 text-text-dim text-[0.65rem] font-medium cursor-pointer transition-all duration-150 hover:border-accent hover:text-accent hover:bg-bg-hover"
               onClick={(e) => toggleExpand(node.id, e, expanded.has(node.id))}
               title={expanded.has(node.id) ? 'Collapse' : 'Expand'}
             >
               {expanded.has(node.id) ? '▾' : '▸'}
             </button>
           ) : (
-            <span className="w-3.5 shrink-0 inline-block" />
+            <span className="w-6 shrink-0 inline-block" />
           )}
           <span className={`flex-1 text-sm whitespace-nowrap overflow-hidden text-ellipsis ${isSub ? 'text-[0.8125rem] text-text' : 'text-text-bright'}`}>
             {node.name}
