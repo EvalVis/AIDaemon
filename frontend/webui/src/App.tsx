@@ -51,7 +51,7 @@ export default function App() {
     setConversations((prev) =>
       prev.map((c) =>
         c.id === activeId
-          ? { ...c, messages: [...c.messages, { role: 'user', content: message }] }
+          ? { ...c, messages: [...c.messages, { role: 'user', content: message, timestampMillis: Date.now() }] }
           : c,
       ),
     );
@@ -80,7 +80,7 @@ export default function App() {
         setConversations((prev) =>
           prev.map((c) =>
             c.id === activeId
-              ? { ...c, messages: [...c.messages, { role: 'assistant', content: 'Error: request failed' }] }
+              ? { ...c, messages: [...c.messages, { role: 'assistant', content: 'Error: request failed', timestampMillis: Date.now() }] }
               : c,
           ),
         );

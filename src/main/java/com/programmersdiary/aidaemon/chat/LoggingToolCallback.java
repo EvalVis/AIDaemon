@@ -64,6 +64,6 @@ public class LoggingToolCallback implements ToolCallback {
         var toolName = delegate.getToolDefinition().name();
         var label = serverName != null ? serverName + " > " + toolName : toolName;
         var content = "[" + label + "]\nInput: " + input + "\nOutput: " + output;
-        toolLog.add(new ChatMessage("tool", content));
+        toolLog.add(ChatMessage.of("tool", content));
     }
 }

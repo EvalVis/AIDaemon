@@ -1,6 +1,7 @@
 export interface ChatMessage {
   role: string;
   content: string;
+  timestampMillis?: number;
 }
 
 export interface Conversation {

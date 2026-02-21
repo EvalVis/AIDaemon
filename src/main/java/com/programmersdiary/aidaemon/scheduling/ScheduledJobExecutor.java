@@ -73,7 +73,7 @@ public class ScheduledJobExecutor {
 
     private void executeJob(ScheduledJob job) {
         try {
-            var messages = List.of(new ChatMessage("user", job.instruction()));
+            var messages = List.of(ChatMessage.of("user", job.instruction()));
             var chatResult = chatServiceProvider.getObject().chat(job.providerId(), messages);
             var result = new JobResult(job.id(), job.description(), Instant.now(), chatResult.response());
             results.add(result);

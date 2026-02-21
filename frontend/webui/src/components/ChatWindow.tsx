@@ -11,15 +11,24 @@ interface ChatWindowProps {
 
 const PREVIEW_LENGTH = 120;
 
+function formatTime(ms: number): string {
+  const d = new Date(ms);
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  const pad3 = (n: number) => n.toString().padStart(3, '0');
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad3(d.getMilliseconds())}`;
+}
+
 function MessageEntry({ msg }: { msg: ChatMessage }) {
   const [collapsed, setCollapsed] = useState(msg.role === 'tool');
 
   const preview = msg.content.slice(0, PREVIEW_LENGTH) + (msg.content.length > PREVIEW_LENGTH ? '…' : '');
+  const timeStr = msg.timestampMillis != null && msg.timestampMillis > 0 ? formatTime(msg.timestampMillis) : null;
 
   return (
     <div className={`message ${msg.role}${collapsed ? ' collapsed' : ''}`}>
       <div className="message-header" onClick={() => setCollapsed((v) => !v)}>
         <span className="role-label">{msg.role}</span>
+        {timeStr != null && <span className="message-time">{timeStr}</span>}
         {collapsed && <span className="message-preview">{preview}</span>}
         <button className="btn-msg-toggle" title={collapsed ? 'Expand' : 'Collapse'}>
           {collapsed ? '▸' : '▾'}

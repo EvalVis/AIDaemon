@@ -37,10 +37,10 @@ public class ConversationService {
     public String sendMessage(String conversationId, String userMessage) {
         var conversation = conversationRepository.findById(conversationId)
                 .orElseThrow(() -> new IllegalArgumentException("Conversation not found: " + conversationId));
-        conversation.messages().add(new ChatMessage("user", userMessage));
+        conversation.messages().add(ChatMessage.of("user", userMessage));
         var result = chatService.chat(conversation.providerId(), conversation.messages(), conversationId);
         conversation.messages().addAll(result.toolMessages());
-        conversation.messages().add(new ChatMessage("assistant", result.response()));
+        conversation.messages().add(ChatMessage.of("assistant", result.response()));
         conversationRepository.save(conversation);
 
         if (!result.pendingSubConversationIds().isEmpty()) {
@@ -56,12 +56,12 @@ public class ConversationService {
     public Flux<StreamChunk> sendMessageStream(String conversationId, String userMessage) {
         var conversation = conversationRepository.findById(conversationId)
                 .orElseThrow(() -> new IllegalArgumentException("Conversation not found: " + conversationId));
-        conversation.messages().add(new ChatMessage("user", userMessage));
+        conversation.messages().add(ChatMessage.of("user", userMessage));
         conversationRepository.save(conversation);
 
         return chatService.stream(conversation.providerId(), conversation.messages(), conversationId, result -> {
             conversation.messages().addAll(result.toolMessages());
-            conversation.messages().add(new ChatMessage("assistant", result.response()));
+            conversation.messages().add(ChatMessage.of("assistant", result.response()));
             conversationRepository.save(conversation);
             if (!result.pendingSubConversationIds().isEmpty()) {
                 var delegationService = delegationServiceProvider.getIfAvailable();

@@ -417,6 +417,13 @@ body {
   flex-shrink: 0;
 }
 
+.message-time {
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+  opacity: 0.85;
+}
+
 .message-preview {
   flex: 1;
   font-size: 0.8125rem;

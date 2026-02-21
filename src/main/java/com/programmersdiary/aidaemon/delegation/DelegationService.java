@@ -50,7 +50,7 @@ public class DelegationService {
             var result = chatServiceProvider.getObject()
                     .chat(sub.providerId(), sub.messages(), subConversationId);
             sub.messages().addAll(result.toolMessages());
-            sub.messages().add(new ChatMessage("assistant", result.response()));
+            sub.messages().add(ChatMessage.of("assistant", result.response()));
             conversationRepository.save(sub);
 
             log.info("Sub-agent '{}' completed", sub.name());
@@ -64,7 +64,7 @@ public class DelegationService {
             log.error("Sub-agent execution failed for {}: {}", subConversationId, e.getMessage(), e);
             var sub = conversationRepository.findById(subConversationId).orElse(null);
             if (sub != null) {
-                sub.messages().add(new ChatMessage("assistant", "[Error] " + e.getMessage()));
+                sub.messages().add(ChatMessage.of("assistant", "[Error] " + e.getMessage()));
                 conversationRepository.save(sub);
                 wakeUpParent(sub.parentConversationId());
             }
@@ -90,12 +90,12 @@ public class DelegationService {
 
             log.info("Waking up parent '{}' ({}), all subs complete: {}", parent.name(), parentId, allComplete);
 
-            parent.messages().add(new ChatMessage("user", buildStatusMessage(subs, allComplete)));
+            parent.messages().add(ChatMessage.of("user", buildStatusMessage(subs, allComplete)));
 
             var result = chatServiceProvider.getObject()
                     .chat(parent.providerId(), parent.messages(), parentId);
             parent.messages().addAll(result.toolMessages());
-            parent.messages().add(new ChatMessage("assistant", result.response()));
+            parent.messages().add(ChatMessage.of("assistant", result.response()));
             conversationRepository.save(parent);
 
             if (!result.pendingSubConversationIds().isEmpty()) {

@@ -32,7 +32,7 @@ public class DelegationTools {
             @ToolParam(description = "Clear, self-contained instruction for the sub-agent to solve") String instruction) {
         var subConversation = new Conversation(
                 UUID.randomUUID().toString(), name, providerId,
-                new ArrayList<>(List.of(new ChatMessage("user", instruction))),
+                new ArrayList<>(List.of(ChatMessage.of("user", instruction))),
                 parentConversationId);
         conversationRepository.save(subConversation);
         pendingSubConversationIds.add(subConversation.id());
@@ -52,7 +52,7 @@ public class DelegationTools {
         if (!parentConversationId.equals(sub.parentConversationId())) {
             return "Error: Sub-conversation does not belong to the current conversation.";
         }
-        sub.messages().add(new ChatMessage("user", instruction));
+        sub.messages().add(ChatMessage.of("user", instruction));
         conversationRepository.save(sub);
         pendingSubConversationIds.add(subConversationId);
         return "Additional work sent to sub-agent '" + sub.name() + "' (" + subConversationId + "). " +
