@@ -28,13 +28,20 @@ function formatCreationTime(ms: number): string {
   return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) + ' ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 }
 
+function byNewestFirst(a: { createdAtMillis?: number | null }, b: { createdAtMillis?: number | null }): number {
+  const ta = a.createdAtMillis ?? 0;
+  const tb = b.createdAtMillis ?? 0;
+  return tb - ta;
+}
+
 function buildTree(conversations: Conversation[]): TreeNode[] {
+  const sorted = [...conversations].sort(byNewestFirst);
   const byId = new Map<string, TreeNode>();
-  for (const c of conversations) {
+  for (const c of sorted) {
     byId.set(c.id, { ...c, children: [] });
   }
   const roots: TreeNode[] = [];
-  for (const c of conversations) {
+  for (const c of sorted) {
     const node = byId.get(c.id)!;
     const pid = c.parentConversationId ?? null;
     if (pid == null) {
@@ -46,7 +53,7 @@ function buildTree(conversations: Conversation[]): TreeNode[] {
     }
   }
   for (const node of byId.values()) {
-    node.children.sort((a, b) => a.name.localeCompare(b.name));
+    node.children.sort(byNewestFirst);
   }
   return roots;
 }
@@ -71,8 +78,8 @@ export default function Sidebar({
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
-  const regular = conversations.filter((c) => !c.name.startsWith('[SJ]'));
-  const scheduled = conversations.filter((c) => c.name.startsWith('[SJ]'));
+  const regular = conversations.filter((c) => !c.name.startsWith('[SJ]')).sort(byNewestFirst);
+  const scheduled = conversations.filter((c) => c.name.startsWith('[SJ]')).sort(byNewestFirst);
   const regularTree = buildTree(regular);
   const scheduledTree = buildTree(scheduled);
 
