@@ -183,6 +183,26 @@ body {
   width: 14px;
 }
 
+.btn-expand-placeholder {
+  width: 14px;
+  flex-shrink: 0;
+  display: inline-block;
+}
+
+.subconversation-list {
+  border-left: 2px solid var(--border);
+  margin-left: 6px;
+}
+
+.conversation-entry.subconversation .conversation-item {
+  padding-left: 12px;
+}
+
+.conversation-entry.subconversation .conv-name {
+  font-size: 0.8125rem;
+  color: var(--text);
+}
+
 .conv-preview {
   padding: 4px 12px 8px 32px;
   display: flex;

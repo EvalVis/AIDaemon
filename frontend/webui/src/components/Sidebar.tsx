@@ -11,6 +11,37 @@ interface SidebarProps {
   onAddProvider: (req: CreateProviderRequest) => void;
 }
 
+type TreeNode = Conversation & { children: TreeNode[] };
+
+function buildTree(conversations: Conversation[]): TreeNode[] {
+  const byId = new Map<string, TreeNode>();
+  for (const c of conversations) {
+    byId.set(c.id, { ...c, children: [] });
+  }
+  const roots: TreeNode[] = [];
+  for (const c of conversations) {
+    const node = byId.get(c.id)!;
+    const pid = c.parentConversationId ?? null;
+    if (pid == null) {
+      roots.push(node);
+    } else {
+      const parent = byId.get(pid);
+      if (parent) parent.children.push(node);
+      else roots.push(node);
+    }
+  }
+  for (const node of byId.values()) {
+    node.children.sort((a, b) => a.name.localeCompare(b.name));
+  }
+  return roots;
+}
+
+function hasActiveDescendant(node: TreeNode, activeId: string | null): boolean {
+  if (!activeId) return false;
+  if (node.id === activeId) return true;
+  return node.children.some((c) => hasActiveDescendant(c, activeId));
+}
+
 export default function Sidebar({
   providers,
   conversations,
@@ -23,14 +54,94 @@ export default function Sidebar({
   const [showProviderForm, setShowProviderForm] = useState(false);
   const [showNewConv, setShowNewConv] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
-  const toggleExpand = (id: string, e: React.MouseEvent) => {
+  const tree = buildTree(conversations);
+
+  const toggleExpand = (id: string, e: React.MouseEvent, currentlyExpanded: boolean) => {
     e.stopPropagation();
-    setExpanded((prev) => {
+    setCollapsed((prev) => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (currentlyExpanded) next.add(id);
+      else next.delete(id);
       return next;
     });
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (currentlyExpanded) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const renderConversation = (node: TreeNode, isSub: boolean) => {
+    const hasChildren = node.children.length > 0;
+    const isActive = node.id === activeId;
+    const autoExpanded = hasChildren && hasActiveDescendant(node, activeId);
+    const isExpanded =
+      !collapsed.has(node.id) && (expanded.has(node.id) || autoExpanded);
+    return (
+      <div
+        key={node.id}
+        className={`conversation-entry${isSub ? ' subconversation' : ''}${isActive ? ' active' : ''}`}
+      >
+        <div className="conversation-item" onClick={() => onSelectConversation(node.id)}>
+          {hasChildren ? (
+            <button
+              className="btn-expand"
+              onClick={(e) => toggleExpand(node.id, e, isExpanded)}
+              title={isExpanded ? 'Collapse' : 'Expand'}
+            >
+              {isExpanded ? '▾' : '▸'}
+            </button>
+          ) : !isSub ? (
+            <button
+              className="btn-expand"
+              onClick={(e) => toggleExpand(node.id, e, expanded.has(node.id))}
+              title={expanded.has(node.id) ? 'Collapse' : 'Expand'}
+            >
+              {expanded.has(node.id) ? '▾' : '▸'}
+            </button>
+          ) : (
+            <span className="btn-expand-placeholder" />
+          )}
+          <span className="conv-name">{node.name}</span>
+          <span className="conv-count">{node.messages.length}</span>
+          <button
+            className="btn-delete-conv"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (window.confirm(`Delete conversation "${node.name}"?`)) {
+                onDeleteConversation(node.id);
+              }
+            }}
+          >
+            &times;
+          </button>
+        </div>
+        {hasChildren && isExpanded && (
+          <div className="subconversation-list">
+            {node.children.map((child) => renderConversation(child, true))}
+          </div>
+        )}
+        {!hasChildren && !isSub && expanded.has(node.id) && (
+          <div className="conv-preview">
+            {node.messages.slice(-4).map((m, i) => (
+              <div key={i} className={`conv-preview-msg ${m.role}`}>
+                <span className="conv-preview-role">{m.role}</span>
+                <span className="conv-preview-text">
+                  {typeof m.content === 'string' ? m.content.slice(0, 80) : ''}
+                  {typeof m.content === 'string' && m.content.length > 80 ? '…' : ''}
+                </span>
+              </div>
+            ))}
+            {node.messages.length === 0 && (
+              <span className="conv-preview-empty">No messages</span>
+            )}
+          </div>
+        )}
+      </div>
+    );
   };
 
   return (
@@ -58,55 +169,8 @@ export default function Sidebar({
       </div>
 
       <nav className="conversation-list">
-        {conversations.map((c) => {
-          const isExpanded = expanded.has(c.id);
-          const isActive = c.id === activeId;
-          return (
-            <div key={c.id} className={`conversation-entry${isActive ? ' active' : ''}`}>
-              <div
-                className="conversation-item"
-                onClick={() => onSelectConversation(c.id)}
-              >
-                <button
-                  className="btn-expand"
-                  onClick={(e) => toggleExpand(c.id, e)}
-                  title={isExpanded ? 'Collapse' : 'Expand'}
-                >
-                  {isExpanded ? '▾' : '▸'}
-                </button>
-                <span className="conv-name">{c.name}</span>
-                <span className="conv-count">{c.messages.length}</span>
-                <button
-                  className="btn-delete-conv"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (window.confirm(`Delete conversation "${c.name}"?`)) {
-                      onDeleteConversation(c.id);
-                    }
-                  }}
-                >
-                  &times;
-                </button>
-              </div>
-              {isExpanded && (
-                <div className="conv-preview">
-                  {c.messages.slice(-4).map((m, i) => (
-                    <div key={i} className={`conv-preview-msg ${m.role}`}>
-                      <span className="conv-preview-role">{m.role}</span>
-                      <span className="conv-preview-text">
-                        {m.content.slice(0, 80)}{m.content.length > 80 ? '…' : ''}
-                      </span>
-                    </div>
-                  ))}
-                  {c.messages.length === 0 && (
-                    <span className="conv-preview-empty">No messages</span>
-                  )}
-                </div>
-              )}
-            </div>
-          );
-        })}
-        {conversations.length === 0 && (
+        {tree.map((root) => renderConversation(root, false))}
+        {tree.length === 0 && (
           <p className="empty-hint">No conversations yet</p>
         )}
       </nav>
