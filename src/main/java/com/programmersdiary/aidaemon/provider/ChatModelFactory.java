@@ -3,6 +3,7 @@ package com.programmersdiary.aidaemon.provider;
 import org.springframework.ai.anthropic.AnthropicChatModel;
 import org.springframework.ai.anthropic.AnthropicChatOptions;
 import org.springframework.ai.anthropic.api.AnthropicApi;
+import org.springframework.ai.anthropic.api.AnthropicApi.ThinkingType;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.ollama.OllamaChatModel;
 import org.springframework.ai.ollama.api.OllamaApi;
@@ -47,9 +48,12 @@ public class ChatModelFactory {
         var api = AnthropicApi.builder()
                 .apiKey(config.apiKey())
                 .build();
+        var maxTokens = 8192;
         var options = AnthropicChatOptions.builder()
                 .model(config.model() != null ? config.model() : "claude-sonnet-4-20250514")
-                .maxTokens(4096)
+                .maxTokens(maxTokens)
+                .thinking(ThinkingType.ENABLED, Math.min(4096, maxTokens - 1024))
+                .temperature(1.0)
                 .toolCallbacks(tools)
                 .build();
         return AnthropicChatModel.builder()

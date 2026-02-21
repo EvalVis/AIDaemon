@@ -5,7 +5,7 @@ import * as api from './api';
 import type { Conversation, CreateProviderRequest, Provider } from './types';
 
 export interface StreamPart {
-  type: 'answer' | 'tool';
+  type: 'answer' | 'tool' | 'reasoning';
   content: string;
 }
 
@@ -20,7 +20,7 @@ export default function App() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [streaming, setStreaming] = useState<StreamingContent | null>(null);
-  const [lastStreamedParts, setLastStreamedParts] = useState<{ conversationId: string; parts: StreamPart[] } | null>(null);
+  const [lastStreamedContent, setLastStreamedContent] = useState<{ conversationId: string; reasoning: string; parts: StreamPart[] } | null>(null);
   const streamingRef = useRef<StreamingContent | null>(null);
 
   useEffect(() => {
@@ -55,7 +55,7 @@ export default function App() {
 
   const handleSend = async (message: string) => {
     if (!activeId) return;
-    setLastStreamedParts(null);
+    setLastStreamedContent(null);
     setConversations((prev) =>
       prev.map((c) =>
         c.id === activeId
@@ -95,9 +95,9 @@ export default function App() {
         });
       },
       () => {
-        const parts = streamingRef.current?.parts;
-        if (activeId && parts && parts.length > 0) {
-          setLastStreamedParts({ conversationId: activeId, parts });
+        const ref = streamingRef.current;
+        if (activeId && ref && (ref.reasoning || ref.parts.length > 0)) {
+          setLastStreamedContent({ conversationId: activeId, reasoning: ref.reasoning ?? '', parts: ref.parts });
         }
         setSending(false);
         setStreaming(null);
@@ -133,7 +133,7 @@ export default function App() {
         conversation={activeConversation}
         sending={sending}
         streaming={streaming}
-        lastStreamedParts={activeId && lastStreamedParts?.conversationId === activeId ? lastStreamedParts.parts : null}
+        lastStreamedContent={activeId && lastStreamedContent?.conversationId === activeId ? lastStreamedContent : null}
         onSend={handleSend}
       />
     </div>

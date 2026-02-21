@@ -179,7 +179,8 @@ public class ChatService {
                     var pendingIds = delegationTools != null
                             ? delegationTools.getPendingSubConversationIds() : List.<String>of();
                     var parts = coalesceOrderedChunks(orderedChunks);
-                    onComplete.accept(new ChatResult(contentAccum.toString(), toolLog, pendingIds, parts));
+                    var reasoning = reasoningAccum.isEmpty() ? null : reasoningAccum.toString();
+                    onComplete.accept(new ChatResult(contentAccum.toString(), toolLog, pendingIds, parts, reasoning));
                 })
                 .doOnError(e -> onComplete.accept(new ChatResult("[Error] " + e.getMessage(), toolLog, List.of())));
     }
@@ -218,13 +219,17 @@ public class ChatService {
         }
         var metadata = output.getMetadata();
         if (metadata != null) {
-            var reasoning = metadata.get("reasoning");
-            if (reasoning != null && !reasoning.toString().isEmpty()) {
-                return new StreamChunk(StreamChunk.TYPE_REASONING, reasoning.toString());
+            for (var key : List.of("thinking", "reasoningContent", "reasoning_content", "reasoning")) {
+                var value = metadata.get(key);
+                if (value != null && !value.toString().isEmpty()) {
+                    return new StreamChunk(StreamChunk.TYPE_REASONING, value.toString());
+                }
             }
-            var reasoningContent = metadata.get("reasoning_content");
-            if (reasoningContent != null && !reasoningContent.toString().isEmpty()) {
-                return new StreamChunk(StreamChunk.TYPE_REASONING, reasoningContent.toString());
+            if (metadata.containsKey("signature")) {
+                var text = output.getText();
+                if (text != null && !text.isEmpty()) {
+                    return new StreamChunk(StreamChunk.TYPE_REASONING, text);
+                }
             }
         }
         var text = output.getText();

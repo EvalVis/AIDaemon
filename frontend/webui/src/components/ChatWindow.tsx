@@ -8,7 +8,7 @@ interface ChatWindowProps {
   conversation: Conversation | null;
   sending: boolean;
   streaming: StreamingContent | null;
-  lastStreamedParts: StreamPart[] | null;
+  lastStreamedContent: { reasoning: string; parts: StreamPart[] } | null;
   onSend: (message: string) => void;
 }
 
@@ -74,6 +74,15 @@ function MessageEntry({ msg }: { msg: DisplayMessage }) {
                       {part.content}
                     </pre>
                   </details>
+                ) : part.type === 'reasoning' ? (
+                  <details key={i} className="mb-2" open>
+                    <summary className="cursor-pointer text-text-dim text-xs font-semibold uppercase">
+                      Thinking
+                    </summary>
+                    <pre className="mt-1.5 p-2 bg-bg rounded-lg text-xs text-text-dim whitespace-pre-wrap break-words max-h-[200px] overflow-y-auto">
+                      {part.content}
+                    </pre>
+                  </details>
                 ) : (
                   <span key={i}>{part.content}</span>
                 )
@@ -93,8 +102,8 @@ function parseStructuredContent(content: string): StreamPart[] | null {
     const data = JSON.parse(content) as { parts?: Array<{ type: string; content: string }> };
     if (!Array.isArray(data.parts)) return null;
     const parts: StreamPart[] = data.parts
-      .filter((p) => p && (p.type === 'answer' || p.type === 'tool') && typeof p.content === 'string')
-      .map((p) => ({ type: p.type as 'answer' | 'tool', content: p.content }));
+      .filter((p) => p && (p.type === 'answer' || p.type === 'tool' || p.type === 'reasoning') && typeof p.content === 'string')
+      .map((p) => ({ type: p.type as 'answer' | 'tool' | 'reasoning', content: p.content }));
     return parts.length > 0 ? parts : null;
   } catch {
     return null;
@@ -104,7 +113,7 @@ function parseStructuredContent(content: string): StreamPart[] | null {
 function getDisplayMessages(
   messages: ChatMessage[],
   hideTools: boolean,
-  lastStreamedParts: StreamPart[] | null
+  lastStreamedContent: { reasoning: string; parts: StreamPart[] } | null
 ): DisplayMessage[] {
   let list: DisplayMessage[] = (hideTools ? messages.filter((m) => m.role !== 'tool') : messages).map((msg) => {
     if (msg.role === 'assistant') {
@@ -113,14 +122,17 @@ function getDisplayMessages(
     }
     return msg;
   });
-  if (lastStreamedParts && list.length > 0 && list[list.length - 1].role === 'assistant') {
+  if (lastStreamedContent && list.length > 0 && list[list.length - 1].role === 'assistant') {
     const lastUserIdx = Math.max(...list.map((msg, i) => (msg.role === 'user' ? i : -1)));
-    list = [...list.slice(0, lastUserIdx + 1), { role: 'assistant', parts: lastStreamedParts }];
+    const parts: StreamPart[] = lastStreamedContent.reasoning
+      ? [{ type: 'reasoning', content: lastStreamedContent.reasoning }, ...lastStreamedContent.parts]
+      : lastStreamedContent.parts;
+    list = [...list.slice(0, lastUserIdx + 1), { role: 'assistant', parts }];
   }
   return list;
 }
 
-export default function ChatWindow({ conversation, sending, streaming, lastStreamedParts, onSend }: ChatWindowProps) {
+export default function ChatWindow({ conversation, sending, streaming, lastStreamedContent, onSend }: ChatWindowProps) {
   const [input, setInput] = useState('');
   const [hideTools, setHideTools] = useState(false);
   const messagesRef = useRef<HTMLDivElement>(null);
@@ -128,7 +140,7 @@ export default function ChatWindow({ conversation, sending, streaming, lastStrea
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const visibleMessages = conversation
-    ? getDisplayMessages(conversation.messages, hideTools, lastStreamedParts)
+    ? getDisplayMessages(conversation.messages, hideTools, lastStreamedContent)
     : [];
 
   useEffect(() => {
