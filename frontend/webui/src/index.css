@@ -464,11 +464,36 @@ body {
 }
 
 .message-tool-part summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   cursor: pointer;
   font-size: 0.75rem;
   font-weight: 600;
   text-transform: uppercase;
   color: #7cb87c;
+  list-style: none;
+}
+
+.message-tool-part summary::-webkit-details-marker,
+.message-tool-part summary::marker {
+  display: none;
+}
+
+.message-tool-part summary .btn-msg-toggle {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 0.7rem;
+  color: #7cb87c;
+  line-height: 1;
+}
+
+.message-tool-part[open] summary .btn-msg-toggle::after {
+  content: '▾';
+}
+
+.message-tool-part:not([open]) summary .btn-msg-toggle::after {
+  content: '▸';
 }
 
 .message-tool-part .tool-content {

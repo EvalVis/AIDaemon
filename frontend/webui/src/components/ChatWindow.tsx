@@ -45,7 +45,10 @@ function MessageEntry({ msg }: { msg: DisplayMessage }) {
             ? (msg as { role: 'assistant'; parts: StreamPart[] }).parts.map((part, i) =>
                 part.type === 'tool' ? (
                   <details key={i} className="message-tool-part" open>
-                    <summary>Tool</summary>
+                    <summary>
+                      <span>Tool</span>
+                      <span className="btn-msg-toggle" />
+                    </summary>
                     <pre className="tool-content">{part.content}</pre>
                   </details>
                 ) : (
@@ -161,7 +164,10 @@ export default function ChatWindow({ conversation, sending, streaming, lastStrea
               {streaming?.parts.map((part, i) =>
                 part.type === 'tool' ? (
                   <details key={i} className="message-tool-part" open>
-                    <summary>Tool</summary>
+                    <summary>
+                      <span>Tool</span>
+                      <span className="btn-msg-toggle" />
+                    </summary>
                     <pre className="tool-content">{part.content}</pre>
                   </details>
                 ) : (
