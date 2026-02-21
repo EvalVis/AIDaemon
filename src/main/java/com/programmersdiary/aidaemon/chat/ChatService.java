@@ -141,6 +141,7 @@ public class ChatService {
 
         var springMessages = new ArrayList<Message>();
         springMessages.add(new SystemMessage(buildSystemContext(isSubConversation)));
+        springMessages.add(new SystemMessage("The remaining text is the conversation history. User might refer to something in it."));
         springMessages.addAll(messages.stream()
                 .filter(m -> !"tool".equals(m.role()))
                 .map(this::toSpringMessage)
