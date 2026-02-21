@@ -39,6 +39,10 @@ public class ConversationService {
         return conversationRepository.save(conversation);
     }
 
+    public void save(Conversation conversation) {
+        conversationRepository.save(conversation);
+    }
+
     public String sendMessage(String conversationId, String userMessage) {
         var conversation = conversationRepository.findById(conversationId)
                 .orElseThrow(() -> new IllegalArgumentException("Conversation not found: " + conversationId));

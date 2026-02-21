@@ -29,6 +29,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 @Service
@@ -70,6 +71,12 @@ public class ChatService {
         return chat(providerId, messages, null);
     }
 
+    public ChatResult streamAndCollect(String providerId, List<ChatMessage> messages) {
+        var resultRef = new AtomicReference<ChatResult>();
+        stream(providerId, messages, null, resultRef::set).blockLast();
+        return resultRef.get();
+    }
+
     public ChatResult chat(String providerId, List<ChatMessage> messages, String conversationId) {
         var config = configRepository.findById(providerId)
                 .orElseThrow(() -> new IllegalArgumentException("Provider not found: " + providerId));
@@ -104,10 +111,38 @@ public class ChatService {
             var response = chatModel.call(new Prompt(springMessages));
             var pendingIds = delegationTools != null
                     ? delegationTools.getPendingSubConversationIds() : List.<String>of();
-            return new ChatResult(response.getResult().getOutput().getText(), toolLog, pendingIds);
+            var result = response.getResult();
+            var output = result != null ? result.getOutput() : null;
+            var text = output != null ? output.getText() : null;
+            var responseText = text != null ? text : "";
+            String reasoning = null;
+            var parts = new ArrayList<StreamChunk>();
+            if (output != null) {
+                reasoning = extractReasoning(output);
+                if (reasoning != null && !reasoning.isEmpty()) {
+                    parts.add(new StreamChunk(StreamChunk.TYPE_REASONING, reasoning));
+                }
+                if (!responseText.isEmpty()) {
+                    parts.add(new StreamChunk(StreamChunk.TYPE_ANSWER, responseText));
+                }
+            }
+            var orderedParts = parts.isEmpty() ? null : parts;
+            return new ChatResult(responseText, toolLog, pendingIds, orderedParts, reasoning);
         } catch (Exception e) {
             return new ChatResult("[Error] " + e.getMessage(), toolLog, List.of());
         }
+    }
+
+    private static String extractReasoning(AssistantMessage output) {
+        var metadata = output.getMetadata();
+        if (metadata == null) return null;
+        for (var key : List.of("thinking", "reasoningContent", "reasoning_content", "reasoning")) {
+            var value = metadata.get(key);
+            if (value != null && !value.toString().isEmpty()) {
+                return value.toString();
+            }
+        }
+        return null;
     }
 
     public Flux<StreamChunk> stream(String providerId, List<ChatMessage> messages, String conversationId,
@@ -180,7 +215,13 @@ public class ChatService {
                             ? delegationTools.getPendingSubConversationIds() : List.<String>of();
                     var parts = coalesceOrderedChunks(orderedChunks);
                     var reasoning = reasoningAccum.isEmpty() ? null : reasoningAccum.toString();
-                    onComplete.accept(new ChatResult(contentAccum.toString(), toolLog, pendingIds, parts, reasoning));
+                    var partsWithReasoning = new ArrayList<StreamChunk>();
+                    if (reasoning != null && !reasoning.isEmpty()) {
+                        partsWithReasoning.add(new StreamChunk(StreamChunk.TYPE_REASONING, reasoning));
+                    }
+                    partsWithReasoning.addAll(parts);
+                    onComplete.accept(new ChatResult(contentAccum.toString(), toolLog, pendingIds,
+                            partsWithReasoning.isEmpty() ? null : partsWithReasoning, reasoning));
                 })
                 .doOnError(e -> onComplete.accept(new ChatResult("[Error] " + e.getMessage(), toolLog, List.of())));
     }

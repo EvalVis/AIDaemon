@@ -56,7 +56,10 @@ export default function Sidebar({
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
-  const tree = buildTree(conversations);
+  const regular = conversations.filter((c) => !c.name.startsWith('[SJ]'));
+  const scheduled = conversations.filter((c) => c.name.startsWith('[SJ]'));
+  const regularTree = buildTree(regular);
+  const scheduledTree = buildTree(scheduled);
 
   const toggleExpand = (id: string, e: React.MouseEvent, currentlyExpanded: boolean) => {
     e.stopPropagation();
@@ -173,11 +176,25 @@ export default function Sidebar({
         )}
       </div>
 
-      <nav className="flex-1 overflow-y-auto py-2">
-        {tree.map((root) => renderConversation(root, false))}
-        {tree.length === 0 && (
-          <p className="text-center py-6 px-3 text-text-dim text-[0.8125rem]">No conversations yet</p>
-        )}
+      <nav className="flex-1 overflow-y-auto py-2 flex flex-col gap-4">
+        <div>
+          <h3 className="px-3 py-1.5 text-[0.6875rem] font-semibold uppercase tracking-wide text-text-dim">
+            Conversations
+          </h3>
+          {regularTree.map((root) => renderConversation(root, false))}
+          {regularTree.length === 0 && (
+            <p className="text-center py-4 px-3 text-text-dim text-[0.8125rem]">No conversations yet</p>
+          )}
+        </div>
+        <div>
+          <h3 className="px-3 py-1.5 text-[0.6875rem] font-semibold uppercase tracking-wide text-text-dim">
+            Scheduled jobs
+          </h3>
+          {scheduledTree.map((root) => renderConversation(root, false))}
+          {scheduledTree.length === 0 && (
+            <p className="text-center py-4 px-3 text-text-dim text-[0.8125rem]">No scheduled job runs yet</p>
+          )}
+        </div>
       </nav>
     </aside>
   );
