@@ -80,10 +80,8 @@ public class ChatService {
                 callbacks.forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog, serverName))));
 
         DelegationTools delegationTools = null;
-        boolean isSubConversation = false;
         if (delegationEnabled && conversationId != null) {
             var conversation = conversationRepository.findById(conversationId).orElse(null);
-            isSubConversation = conversation != null && conversation.parentConversationId() != null;
             delegationTools = new DelegationTools(conversationRepository, conversationId, providerId);
             Arrays.asList(ToolCallbacks.from(delegationTools))
                     .forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog)));
