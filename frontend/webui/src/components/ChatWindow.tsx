@@ -59,17 +59,39 @@ function MessageEntry({ msg }: { msg: DisplayMessage }) {
   );
 }
 
+function parseStructuredContent(content: string): StreamPart[] | null {
+  if (!content || typeof content !== 'string') return null;
+  const trimmed = content.trim();
+  if (!trimmed.startsWith('{"parts":')) return null;
+  try {
+    const data = JSON.parse(content) as { parts?: Array<{ type: string; content: string }> };
+    if (!Array.isArray(data.parts)) return null;
+    const parts: StreamPart[] = data.parts
+      .filter((p) => p && (p.type === 'answer' || p.type === 'tool') && typeof p.content === 'string')
+      .map((p) => ({ type: p.type as 'answer' | 'tool', content: p.content }));
+    return parts.length > 0 ? parts : null;
+  } catch {
+    return null;
+  }
+}
+
 function getDisplayMessages(
   messages: ChatMessage[],
   hideTools: boolean,
   lastStreamedParts: StreamPart[] | null
 ): DisplayMessage[] {
-  const filtered = hideTools ? messages.filter((m) => m.role !== 'tool') : messages;
-  if (!lastStreamedParts || filtered.length === 0 || filtered[filtered.length - 1].role !== 'assistant') {
-    return filtered;
+  let list: DisplayMessage[] = (hideTools ? messages.filter((m) => m.role !== 'tool') : messages).map((msg) => {
+    if (msg.role === 'assistant') {
+      const parts = parseStructuredContent(msg.content);
+      if (parts) return { role: 'assistant' as const, parts };
+    }
+    return msg;
+  });
+  if (lastStreamedParts && list.length > 0 && list[list.length - 1].role === 'assistant') {
+    const lastUserIdx = Math.max(...list.map((msg, i) => (msg.role === 'user' ? i : -1)));
+    list = [...list.slice(0, lastUserIdx + 1), { role: 'assistant', parts: lastStreamedParts }];
   }
-  const lastUserIdx = filtered.length === 0 ? -1 : Math.max(...filtered.map((msg, i) => (msg.role === 'user' ? i : -1)));
-  return [...filtered.slice(0, lastUserIdx + 1), { role: 'assistant', parts: lastStreamedParts }];
+  return list;
 }
 
 export default function ChatWindow({ conversation, sending, streaming, lastStreamedParts, onSend }: ChatWindowProps) {

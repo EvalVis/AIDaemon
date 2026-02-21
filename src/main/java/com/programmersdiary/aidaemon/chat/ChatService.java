@@ -1,5 +1,7 @@
 package com.programmersdiary.aidaemon.chat;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.programmersdiary.aidaemon.delegation.DelegationTools;
 import com.programmersdiary.aidaemon.mcp.McpService;
 import com.programmersdiary.aidaemon.provider.ChatModelFactory;
@@ -26,6 +28,7 @@ import reactor.core.publisher.Sinks;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
 
 @Service
@@ -148,6 +151,7 @@ public class ChatService {
 
         final StringBuilder contentAccum = new StringBuilder();
         final StringBuilder reasoningAccum = new StringBuilder();
+        final var orderedChunks = new ArrayList<StreamChunk>();
 
         var contentStream = streamingModel.stream(new Prompt(springMessages))
                 .flatMap(response -> {
@@ -164,13 +168,43 @@ public class ChatService {
                 .doOnComplete(() -> sink.emitComplete(Sinks.EmitFailureHandler.FAIL_FAST))
                 .doOnError(e -> sink.emitComplete(Sinks.EmitFailureHandler.FAIL_FAST));
 
-        return Flux.merge(contentStream, sink.asFlux())
+        var merged = Flux.merge(contentStream, sink.asFlux())
+                .doOnNext(c -> {
+                    if (StreamChunk.TYPE_ANSWER.equals(c.type()) || StreamChunk.TYPE_TOOL.equals(c.type())) {
+                        orderedChunks.add(c);
+                    }
+                });
+        return merged
                 .doOnComplete(() -> {
                     var pendingIds = delegationTools != null
                             ? delegationTools.getPendingSubConversationIds() : List.<String>of();
-                    onComplete.accept(new ChatResult(contentAccum.toString(), toolLog, pendingIds));
+                    var parts = coalesceOrderedChunks(orderedChunks);
+                    onComplete.accept(new ChatResult(contentAccum.toString(), toolLog, pendingIds, parts));
                 })
                 .doOnError(e -> onComplete.accept(new ChatResult("[Error] " + e.getMessage(), toolLog, List.of())));
+    }
+
+    private static List<StreamChunk> coalesceOrderedChunks(List<StreamChunk> orderedChunks) {
+        if (orderedChunks.isEmpty()) {
+            return List.of();
+        }
+        var parts = new ArrayList<StreamChunk>();
+        var answerAccum = new StringBuilder();
+        for (var c : orderedChunks) {
+            if (StreamChunk.TYPE_ANSWER.equals(c.type())) {
+                answerAccum.append(c.content());
+            } else {
+                if (answerAccum.length() > 0) {
+                    parts.add(new StreamChunk(StreamChunk.TYPE_ANSWER, answerAccum.toString()));
+                    answerAccum.setLength(0);
+                }
+                parts.add(c);
+            }
+        }
+        if (answerAccum.length() > 0) {
+            parts.add(new StreamChunk(StreamChunk.TYPE_ANSWER, answerAccum.toString()));
+        }
+        return parts;
     }
 
     private StreamChunk toStreamChunk(ChatResponse response) {
@@ -209,12 +243,42 @@ public class ChatService {
         return sb.toString();
     }
 
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
     private Message toSpringMessage(ChatMessage message) {
         return switch (message.role()) {
             case "system" -> new SystemMessage(message.content());
-            case "assistant" -> new AssistantMessage(message.content());
+            case "assistant" -> new AssistantMessage(flattenStructuredContent(message.content()));
             default -> new UserMessage(message.content());
         };
+    }
+
+    private String flattenStructuredContent(String content) {
+        if (content == null || !content.trim().startsWith("{\"parts\":")) {
+            return content != null ? content : "";
+        }
+        try {
+            @SuppressWarnings("unchecked")
+            var map = OBJECT_MAPPER.readValue(content, Map.class);
+            var parts = (List<?>) map.get("parts");
+            if (parts == null) return content;
+            var sb = new StringBuilder();
+            for (var o : parts) {
+                if (!(o instanceof Map<?, ?> p)) continue;
+                var type = p.get("type");
+                var partContent = p.get("content");
+                if (partContent == null) continue;
+                var contentStr = partContent.toString();
+                if ("answer".equals(type)) {
+                    sb.append(contentStr);
+                } else {
+                    sb.append("\n[Tool]\n").append(contentStr).append("\n");
+                }
+            }
+            return sb.toString();
+        } catch (JsonProcessingException | ClassCastException e) {
+            return content;
+        }
     }
 
 }

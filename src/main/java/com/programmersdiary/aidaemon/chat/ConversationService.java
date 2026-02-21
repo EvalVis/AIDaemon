@@ -1,5 +1,7 @@
 package com.programmersdiary.aidaemon.chat;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.programmersdiary.aidaemon.delegation.DelegationService;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
@@ -7,10 +9,13 @@ import reactor.core.publisher.Flux;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
 public class ConversationService {
+
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private final ChatService chatService;
     private final ConversationRepository conversationRepository;
@@ -60,8 +65,18 @@ public class ConversationService {
         conversationRepository.save(conversation);
 
         return chatService.stream(conversation.providerId(), conversation.messages(), conversationId, result -> {
-            conversation.messages().addAll(result.toolMessages());
-            conversation.messages().add(ChatMessage.of("assistant", result.response()));
+            if (result.orderedParts() != null && !result.orderedParts().isEmpty()) {
+                try {
+                    var content = OBJECT_MAPPER.writeValueAsString(Map.of("parts", result.orderedParts()));
+                    conversation.messages().add(ChatMessage.of("assistant", content));
+                } catch (JsonProcessingException e) {
+                    conversation.messages().addAll(result.toolMessages());
+                    conversation.messages().add(ChatMessage.of("assistant", result.response()));
+                }
+            } else {
+                conversation.messages().addAll(result.toolMessages());
+                conversation.messages().add(ChatMessage.of("assistant", result.response()));
+            }
             conversationRepository.save(conversation);
             if (!result.pendingSubConversationIds().isEmpty()) {
                 var delegationService = delegationServiceProvider.getIfAvailable();
