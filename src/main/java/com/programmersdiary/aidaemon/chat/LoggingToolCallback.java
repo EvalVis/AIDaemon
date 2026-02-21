@@ -6,21 +6,29 @@ import org.springframework.ai.tool.definition.ToolDefinition;
 import org.springframework.ai.tool.metadata.ToolMetadata;
 
 import java.util.List;
+import java.util.function.Consumer;
 
 public class LoggingToolCallback implements ToolCallback {
 
     private final ToolCallback delegate;
     private final List<ChatMessage> toolLog;
     private final String serverName;
+    private final Consumer<StreamChunk> onToolChunk;
 
     public LoggingToolCallback(ToolCallback delegate, List<ChatMessage> toolLog) {
-        this(delegate, toolLog, null);
+        this(delegate, toolLog, null, null);
     }
 
     public LoggingToolCallback(ToolCallback delegate, List<ChatMessage> toolLog, String serverName) {
+        this(delegate, toolLog, serverName, null);
+    }
+
+    public LoggingToolCallback(ToolCallback delegate, List<ChatMessage> toolLog, String serverName,
+                               Consumer<StreamChunk> onToolChunk) {
         this.delegate = delegate;
         this.toolLog = toolLog;
         this.serverName = serverName;
+        this.onToolChunk = onToolChunk;
     }
 
     @Override
@@ -65,5 +73,8 @@ public class LoggingToolCallback implements ToolCallback {
         var label = serverName != null ? serverName + " > " + toolName : toolName;
         var content = "[" + label + "]\nInput: " + input + "\nOutput: " + output;
         toolLog.add(ChatMessage.of("tool", content));
+        if (onToolChunk != null) {
+            onToolChunk.accept(new StreamChunk(StreamChunk.TYPE_TOOL, content));
+        }
     }
 }

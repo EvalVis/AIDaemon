@@ -1,12 +1,17 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Sidebar from './components/Sidebar';
 import ChatWindow from './components/ChatWindow';
 import * as api from './api';
 import type { Conversation, CreateProviderRequest, Provider } from './types';
 
+export interface StreamPart {
+  type: 'answer' | 'tool';
+  content: string;
+}
+
 export interface StreamingContent {
   reasoning: string;
-  answer: string;
+  parts: StreamPart[];
 }
 
 export default function App() {
@@ -15,6 +20,8 @@ export default function App() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [streaming, setStreaming] = useState<StreamingContent | null>(null);
+  const [lastStreamedParts, setLastStreamedParts] = useState<{ conversationId: string; parts: StreamPart[] } | null>(null);
+  const streamingRef = useRef<StreamingContent | null>(null);
 
   useEffect(() => {
     api.fetchProviders().then(setProviders);
@@ -48,6 +55,7 @@ export default function App() {
 
   const handleSend = async (message: string) => {
     if (!activeId) return;
+    setLastStreamedParts(null);
     setConversations((prev) =>
       prev.map((c) =>
         c.id === activeId
@@ -56,22 +64,44 @@ export default function App() {
       ),
     );
     setSending(true);
-    setStreaming({ reasoning: '', answer: '' });
+    const initial: StreamingContent = { reasoning: '', parts: [] };
+    setStreaming(initial);
+    streamingRef.current = initial;
     api.sendMessageStream(
       activeId,
       message,
       (chunk) => {
         setStreaming((prev) => {
           if (!prev) return prev;
+          let next: StreamingContent;
           if (chunk.type === 'reasoning') {
-            return { ...prev, reasoning: prev.reasoning + chunk.content };
+            next = { ...prev, reasoning: prev.reasoning + chunk.content };
+          } else if (chunk.type === 'tool') {
+            next = { ...prev, parts: [...prev.parts, { type: 'tool', content: chunk.content }] };
+          } else {
+            const prevParts = prev.parts;
+            const last = prevParts[prevParts.length - 1];
+            if (last?.type === 'answer') {
+              next = {
+                ...prev,
+                parts: [...prevParts.slice(0, -1), { type: 'answer', content: last.content + chunk.content }],
+              };
+            } else {
+              next = { ...prev, parts: [...prevParts, { type: 'answer', content: chunk.content }] };
+            }
           }
-          return { ...prev, answer: prev.answer + chunk.content };
+          streamingRef.current = next;
+          return next;
         });
       },
       () => {
+        const parts = streamingRef.current?.parts;
+        if (activeId && parts && parts.length > 0) {
+          setLastStreamedParts({ conversationId: activeId, parts });
+        }
         setSending(false);
         setStreaming(null);
+        streamingRef.current = null;
         api.fetchConversations().then(setConversations);
       },
       () => {
@@ -103,6 +133,7 @@ export default function App() {
         conversation={activeConversation}
         sending={sending}
         streaming={streaming}
+        lastStreamedParts={activeId && lastStreamedParts?.conversationId === activeId ? lastStreamedParts.parts : null}
         onSend={handleSend}
       />
     </div>

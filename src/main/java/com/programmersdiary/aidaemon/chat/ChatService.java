@@ -21,6 +21,7 @@ import org.springframework.ai.tool.ToolCallback;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Sinks;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -112,20 +113,22 @@ public class ChatService {
                 .orElseThrow(() -> new IllegalArgumentException("Provider not found: " + providerId));
 
         final var toolLog = new ArrayList<ChatMessage>();
+        var sink = Sinks.many().unicast().<StreamChunk>onBackpressureBuffer();
+        var onToolChunk = (Consumer<StreamChunk>) c -> sink.tryEmitNext(c);
         var loggingTools = new ArrayList<ToolCallback>();
         Arrays.asList(ToolCallbacks.from(new ChatTools(skillsService, jobExecutor, providerId)))
-                .forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog)));
+                .forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog, null, onToolChunk)));
         Arrays.asList(ToolCallbacks.from(new ShellTool(shellAccessService)))
-                .forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog)));
+                .forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog, null, onToolChunk)));
         mcpService.getToolCallbacksByServer().forEach((serverName, callbacks) ->
-                callbacks.forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog, serverName))));
+                callbacks.forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog, serverName, onToolChunk))));
 
         final DelegationTools delegationTools = (delegationEnabled && conversationId != null)
                 ? new DelegationTools(conversationRepository, conversationId, providerId)
                 : null;
         if (delegationTools != null) {
             Arrays.asList(ToolCallbacks.from(delegationTools))
-                    .forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog)));
+                    .forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog, null, onToolChunk)));
         }
 
         var chatModel = chatModelFactory.create(config, loggingTools);
@@ -146,7 +149,7 @@ public class ChatService {
         final StringBuilder contentAccum = new StringBuilder();
         final StringBuilder reasoningAccum = new StringBuilder();
 
-        return streamingModel.stream(new Prompt(springMessages))
+        var contentStream = streamingModel.stream(new Prompt(springMessages))
                 .flatMap(response -> {
                     var c = toStreamChunk(response);
                     return c != null ? Flux.just(c) : Flux.empty();
@@ -154,10 +157,14 @@ public class ChatService {
                 .doOnNext(c -> {
                     if (StreamChunk.TYPE_REASONING.equals(c.type())) {
                         reasoningAccum.append(c.content());
-                    } else {
+                    } else if (StreamChunk.TYPE_ANSWER.equals(c.type())) {
                         contentAccum.append(c.content());
                     }
                 })
+                .doOnComplete(() -> sink.emitComplete(Sinks.EmitFailureHandler.FAIL_FAST))
+                .doOnError(e -> sink.emitComplete(Sinks.EmitFailureHandler.FAIL_FAST));
+
+        return Flux.merge(contentStream, sink.asFlux())
                 .doOnComplete(() -> {
                     var pendingIds = delegationTools != null
                             ? delegationTools.getPendingSubConversationIds() : List.<String>of();

@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ChatMessage, Conversation } from '../types';
-import type { StreamingContent } from '../App';
+import type { StreamingContent, StreamPart } from '../App';
+
+type DisplayMessage = ChatMessage | { role: 'assistant'; parts: StreamPart[] };
 
 interface ChatWindowProps {
   conversation: Conversation | null;
   sending: boolean;
   streaming: StreamingContent | null;
+  lastStreamedParts: StreamPart[] | null;
   onSend: (message: string) => void;
 }
 
@@ -18,11 +21,13 @@ function formatTime(ms: number): string {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad3(d.getMilliseconds())}`;
 }
 
-function MessageEntry({ msg }: { msg: ChatMessage }) {
-  const [collapsed, setCollapsed] = useState(msg.role === 'tool');
-
-  const preview = msg.content.slice(0, PREVIEW_LENGTH) + (msg.content.length > PREVIEW_LENGTH ? '…' : '');
-  const timeStr = msg.timestampMillis != null && msg.timestampMillis > 0 ? formatTime(msg.timestampMillis) : null;
+function MessageEntry({ msg }: { msg: DisplayMessage }) {
+  const hasParts = 'parts' in msg && msg.parts != null;
+  const [collapsed, setCollapsed] = useState(msg.role === 'tool' && !hasParts);
+  const content = 'content' in msg ? msg.content : '';
+  const preview = content.slice(0, PREVIEW_LENGTH) + (content.length > PREVIEW_LENGTH ? '…' : '');
+  const timeStr = 'timestampMillis' in msg && msg.timestampMillis != null && msg.timestampMillis > 0
+    ? formatTime(msg.timestampMillis) : null;
 
   return (
     <div className={`message ${msg.role}${collapsed ? ' collapsed' : ''}`}>
@@ -34,21 +39,53 @@ function MessageEntry({ msg }: { msg: ChatMessage }) {
           {collapsed ? '▸' : '▾'}
         </button>
       </div>
-      {!collapsed && <div className="message-content">{msg.content}</div>}
+      {!collapsed && (
+        <div className="message-content">
+          {hasParts
+            ? (msg as { role: 'assistant'; parts: StreamPart[] }).parts.map((part, i) =>
+                part.type === 'tool' ? (
+                  <details key={i} className="message-tool-part" open>
+                    <summary>Tool</summary>
+                    <pre className="tool-content">{part.content}</pre>
+                  </details>
+                ) : (
+                  <span key={i}>{part.content}</span>
+                )
+              )
+            : content}
+        </div>
+      )}
     </div>
   );
 }
 
-export default function ChatWindow({ conversation, sending, streaming, onSend }: ChatWindowProps) {
+function getDisplayMessages(
+  messages: ChatMessage[],
+  hideTools: boolean,
+  lastStreamedParts: StreamPart[] | null
+): DisplayMessage[] {
+  const filtered = hideTools ? messages.filter((m) => m.role !== 'tool') : messages;
+  if (!lastStreamedParts || filtered.length === 0 || filtered[filtered.length - 1].role !== 'assistant') {
+    return filtered;
+  }
+  const lastUserIdx = filtered.length === 0 ? -1 : Math.max(...filtered.map((msg, i) => (msg.role === 'user' ? i : -1)));
+  return [...filtered.slice(0, lastUserIdx + 1), { role: 'assistant', parts: lastStreamedParts }];
+}
+
+export default function ChatWindow({ conversation, sending, streaming, lastStreamedParts, onSend }: ChatWindowProps) {
   const [input, setInput] = useState('');
   const [hideTools, setHideTools] = useState(false);
   const messagesRef = useRef<HTMLDivElement>(null);
   const topRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
+  const visibleMessages = conversation
+    ? getDisplayMessages(conversation.messages, hideTools, lastStreamedParts)
+    : [];
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [conversation?.messages.length, streaming?.reasoning, streaming?.answer]);
+  }, [conversation?.messages.length, streaming?.reasoning, streaming?.parts?.length]);
 
   const handleSend = () => {
     const trimmed = input.trim();
@@ -67,10 +104,6 @@ export default function ChatWindow({ conversation, sending, streaming, onSend }:
       </main>
     );
   }
-
-  const visibleMessages = hideTools
-    ? conversation.messages.filter((m) => m.role !== 'tool')
-    : conversation.messages;
 
   return (
     <main className="chat-window">
@@ -102,8 +135,20 @@ export default function ChatWindow({ conversation, sending, streaming, onSend }:
                   <pre className="reasoning-text">{streaming.reasoning}</pre>
                 </details>
               ) : null}
-              {streaming?.reasoning && streaming?.answer ? <div className="streaming-divider" /> : null}
-              <span className="streaming-answer">{streaming?.answer ?? (streaming ? '' : 'Thinking…')}</span>
+              {(streaming?.reasoning && streaming.parts.length > 0) ? <div className="streaming-divider" /> : null}
+              {streaming?.parts.map((part, i) =>
+                part.type === 'tool' ? (
+                  <details key={i} className="message-tool-part" open>
+                    <summary>Tool</summary>
+                    <pre className="tool-content">{part.content}</pre>
+                  </details>
+                ) : (
+                  <span key={i} className="streaming-answer">{part.content}</span>
+                )
+              )}
+              {streaming && streaming.parts.length === 0 && !streaming.reasoning && (
+                <span className="streaming-answer">Thinking…</span>
+              )}
             </div>
           </div>
         )}

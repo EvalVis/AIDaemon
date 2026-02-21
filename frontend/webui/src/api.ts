@@ -35,7 +35,7 @@ export async function createConversation(name: string, providerId: string): Prom
 }
 
 export interface StreamChunk {
-  type: 'reasoning' | 'answer';
+  type: 'reasoning' | 'answer' | 'tool';
   content: string;
 }
 
