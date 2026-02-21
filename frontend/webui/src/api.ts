@@ -25,11 +25,20 @@ export async function fetchConversations(): Promise<Conversation[]> {
   return res.json();
 }
 
-export async function createConversation(name: string, providerId: string): Promise<{ conversationId: string; name: string; providerId: string }> {
+export async function createConversation(name: string, providerId?: string | null): Promise<{ conversationId: string; name: string; providerId: string | null }> {
   const res = await fetch('/api/conversations', {
     method: 'POST',
     headers: JSON_HEADERS,
-    body: JSON.stringify({ name, providerId }),
+    body: JSON.stringify(providerId != null ? { name, providerId } : { name }),
+  });
+  return res.json();
+}
+
+export async function updateConversation(id: string, patch: { providerId?: string | null }): Promise<Conversation> {
+  const res = await fetch(`/api/conversations/${id}`, {
+    method: 'PATCH',
+    headers: JSON_HEADERS,
+    body: JSON.stringify(patch),
   });
   return res.json();
 }

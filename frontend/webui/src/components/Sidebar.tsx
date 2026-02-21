@@ -6,7 +6,7 @@ interface SidebarProps {
   conversations: Conversation[];
   activeId: string | null;
   onSelectConversation: (id: string) => void;
-  onCreateConversation: (name: string, providerId: string) => void;
+  onCreateConversation: (name: string, providerId?: string | null) => void;
   onDeleteConversation: (id: string) => void;
   onAddProvider: (req: CreateProviderRequest) => void;
 }
@@ -196,9 +196,8 @@ export default function Sidebar({
         </button>
         {showNewConv && (
           <NewConversationForm
-            providers={providers}
-            onCreate={(name, pid) => {
-              onCreateConversation(name, pid);
+            onCreate={(name) => {
+              onCreateConversation(name);
               setShowNewConv(false);
             }}
           />
@@ -322,15 +321,8 @@ function ProviderButton({
   );
 }
 
-function NewConversationForm({
-  providers,
-  onCreate,
-}: {
-  providers: Provider[];
-  onCreate: (name: string, providerId: string) => void;
-}) {
+function NewConversationForm({ onCreate }: { onCreate: (name: string) => void }) {
   const [name, setName] = useState('');
-  const [providerId, setProviderId] = useState(providers[0]?.id ?? '');
 
   return (
     <div className="flex flex-col gap-1.5 mt-2">
@@ -339,22 +331,13 @@ function NewConversationForm({
         value={name}
         onChange={(e) => setName(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === 'Enter' && name && providerId) onCreate(name, providerId);
+          if (e.key === 'Enter' && name.trim()) onCreate(name.trim());
         }}
         className="p-1.5 px-2.5 bg-bg-input text-text border border-border rounded-lg text-[0.8125rem] outline-none focus:border-accent"
       />
-      <select
-        value={providerId}
-        onChange={(e) => setProviderId(e.target.value)}
-        className="p-1.5 px-2.5 bg-bg-input text-text border border-border rounded-lg text-[0.8125rem] outline-none focus:border-accent"
-      >
-        {providers.map((p) => (
-          <option key={p.id} value={p.id}>{p.name}</option>
-        ))}
-      </select>
       <button
         className="py-1.5 px-3 bg-accent text-white border-0 rounded-lg cursor-pointer text-[0.8125rem] transition-colors duration-150 hover:bg-accent-hover"
-        onClick={() => name && providerId && onCreate(name, providerId)}
+        onClick={() => name.trim() && onCreate(name.trim())}
       >
         Create
       </button>

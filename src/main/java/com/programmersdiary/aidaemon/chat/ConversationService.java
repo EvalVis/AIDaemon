@@ -40,6 +40,14 @@ public class ConversationService {
         return conversationRepository.save(conversation);
     }
 
+    public Conversation updateProvider(String conversationId, String providerId) {
+        var conversation = conversationRepository.findById(conversationId)
+                .orElseThrow(() -> new IllegalArgumentException("Conversation not found: " + conversationId));
+        var updated = new Conversation(conversation.id(), conversation.name(), providerId, conversation.messages(),
+                conversation.parentConversationId(), conversation.createdAtMillis());
+        return conversationRepository.save(updated);
+    }
+
     public void save(Conversation conversation) {
         conversationRepository.save(conversation);
     }
@@ -47,6 +55,9 @@ public class ConversationService {
     public String sendMessage(String conversationId, String userMessage) {
         var conversation = conversationRepository.findById(conversationId)
                 .orElseThrow(() -> new IllegalArgumentException("Conversation not found: " + conversationId));
+        if (conversation.providerId() == null || conversation.providerId().isBlank()) {
+            throw new IllegalArgumentException("No agent selected for this conversation");
+        }
         conversation.messages().add(ChatMessage.of("user", userMessage));
         var result = chatService.chat(conversation.providerId(), conversation.messages(), conversationId);
         conversation.messages().addAll(result.toolMessages());
@@ -66,6 +77,9 @@ public class ConversationService {
     public Flux<StreamChunk> sendMessageStream(String conversationId, String userMessage) {
         var conversation = conversationRepository.findById(conversationId)
                 .orElseThrow(() -> new IllegalArgumentException("Conversation not found: " + conversationId));
+        if (conversation.providerId() == null || conversation.providerId().isBlank()) {
+            return Flux.error(new IllegalArgumentException("No agent selected for this conversation"));
+        }
         conversation.messages().add(ChatMessage.of("user", userMessage));
         conversationRepository.save(conversation);
 

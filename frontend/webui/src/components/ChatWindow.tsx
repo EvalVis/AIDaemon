@@ -1,15 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
-import type { ChatMessage, Conversation } from '../types';
+import type { ChatMessage, Conversation, Provider } from '../types';
 import type { StreamingContent, StreamPart } from '../App';
 
 type DisplayMessage = ChatMessage | { role: 'assistant'; parts: StreamPart[] };
 
 interface ChatWindowProps {
   conversation: Conversation | null;
+  providers: Provider[];
   sending: boolean;
   streaming: StreamingContent | null;
   lastStreamedContent: { reasoning: string; parts: StreamPart[] } | null;
   onSend: (message: string) => void;
+  onUpdateProvider: (conversationId: string, providerId: string | null) => void;
 }
 
 const PREVIEW_LENGTH = 120;
@@ -132,7 +134,7 @@ function getDisplayMessages(
   return list;
 }
 
-export default function ChatWindow({ conversation, sending, streaming, lastStreamedContent, onSend }: ChatWindowProps) {
+export default function ChatWindow({ conversation, providers, sending, streaming, lastStreamedContent, onSend, onUpdateProvider }: ChatWindowProps) {
   const [input, setInput] = useState('');
   const [hideTools, setHideTools] = useState(false);
   const messagesRef = useRef<HTMLDivElement>(null);
@@ -147,9 +149,10 @@ export default function ChatWindow({ conversation, sending, streaming, lastStrea
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [conversation?.messages.length, streaming?.reasoning, streaming?.parts?.length]);
 
+  const hasProvider = Boolean(conversation?.providerId);
   const handleSend = () => {
     const trimmed = input.trim();
-    if (!trimmed || sending) return;
+    if (!trimmed || sending || !hasProvider) return;
     setInput('');
     onSend(trimmed);
   };
@@ -167,8 +170,8 @@ export default function ChatWindow({ conversation, sending, streaming, lastStrea
 
   return (
     <main className="flex-1 flex flex-col min-w-0">
-      <header className="flex items-center gap-3 py-3.5 px-5 border-b border-border">
-        <h2 className="flex-1 text-base font-semibold text-text-bright">{conversation.name}</h2>
+      <header className="flex flex-wrap items-center gap-3 py-3.5 px-5 border-b border-border">
+        <h2 className="flex-1 min-w-0 text-base font-semibold text-text-bright truncate">{conversation.name}</h2>
         <button
           className={`py-1 px-3 border rounded-lg cursor-pointer text-xs transition-all duration-150 whitespace-nowrap ${
             hideTools
@@ -235,7 +238,7 @@ export default function ChatWindow({ conversation, sending, streaming, lastStrea
       <div className="flex items-end gap-2 py-3 px-5 border-t border-border bg-bg-sidebar">
         <div className="flex flex-col gap-1">
           <button
-            className="w-7 h-7 bg-bg-input text-text-dim border border-border rounded-lg cursor-pointer text-[0.7rem] flex items-center justify-center transition-all duration-150 hover:border-accent hover:text-text-bright p-0"
+            className="w-7 h-7 bg-bg-input text-text-dim border border-border rounded-lg cursor-pointer text-[0.7rem] flex items-center justify-center transition-all duration-150 hover:border-accent hover:text-text-bright p-0 disabled:opacity-50 disabled:cursor-not-allowed"
             onClick={scrollToTop}
             title="Scroll to top"
           >
@@ -259,17 +262,32 @@ export default function ChatWindow({ conversation, sending, streaming, lastStrea
             }
           }}
           placeholder="Type a message… (Enter to send, Shift+Enter for newline)"
-          disabled={sending}
+          disabled={sending || !hasProvider}
           rows={2}
           className="flex-1 py-2.5 px-3.5 bg-bg-input text-text border border-border rounded-lg font-inherit text-sm resize-none outline-none leading-normal focus:border-accent"
         />
-        <button
-          className="py-2.5 px-5 bg-accent text-white border-0 rounded-lg cursor-pointer text-sm font-medium transition-colors duration-150 self-end hover:bg-accent-hover disabled:opacity-40 disabled:cursor-not-allowed"
-          onClick={handleSend}
-          disabled={sending || !input.trim()}
-        >
-          Send
-        </button>
+        <div className="flex flex-col gap-1 items-end shrink-0">
+          <select
+            value={conversation.providerId ?? ''}
+            onChange={(e) => onUpdateProvider(conversation.id, e.target.value || null)}
+            className="py-1.5 px-2.5 bg-bg-input text-text border border-border rounded-lg text-[0.8125rem] outline-none focus:border-accent min-w-[140px]"
+          >
+            <option value="">Select agent…</option>
+            {providers.map((p) => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+          {!hasProvider && (
+            <span className="text-[0.6875rem] text-text-dim">Select agent to send</span>
+          )}
+          <button
+            className="py-2.5 px-5 bg-accent text-white border-0 rounded-lg cursor-pointer text-sm font-medium transition-colors duration-150 w-full hover:bg-accent-hover disabled:opacity-40 disabled:cursor-not-allowed"
+            onClick={handleSend}
+            disabled={sending || !hasProvider || !input.trim()}
+          >
+            Send
+          </button>
+        </div>
       </div>
     </main>
   );

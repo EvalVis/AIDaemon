@@ -7,7 +7,7 @@ export interface ChatMessage {
 export interface Conversation {
   id: string;
   name: string;
-  providerId: string;
+  providerId: string | null;
   messages: ChatMessage[];
   parentConversationId?: string | null;
   createdAtMillis?: number | null;

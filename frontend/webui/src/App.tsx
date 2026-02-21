@@ -35,16 +35,21 @@ export default function App() {
     setProviders((prev) => [...prev, created]);
   };
 
-  const handleCreateConversation = async (name: string, providerId: string) => {
+  const handleCreateConversation = async (name: string, providerId?: string | null) => {
     const res = await api.createConversation(name, providerId);
     const conv: Conversation = {
       id: res.conversationId,
       name: res.name,
-      providerId: res.providerId,
+      providerId: res.providerId ?? null,
       messages: [],
     };
     setConversations((prev) => [...prev, conv]);
     setActiveId(conv.id);
+  };
+
+  const handleUpdateConversationProvider = async (id: string, providerId: string | null) => {
+    const updated = await api.updateConversation(id, { providerId });
+    setConversations((prev) => prev.map((c) => (c.id === id ? { ...c, providerId: updated.providerId } : c)));
   };
 
   const handleDeleteConversation = async (id: string) => {
@@ -131,10 +136,12 @@ export default function App() {
       />
       <ChatWindow
         conversation={activeConversation}
+        providers={providers}
         sending={sending}
         streaming={streaming}
         lastStreamedContent={activeId && lastStreamedContent?.conversationId === activeId ? lastStreamedContent : null}
         onSend={handleSend}
+        onUpdateProvider={handleUpdateConversationProvider}
       />
     </div>
   );

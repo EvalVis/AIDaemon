@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -27,10 +28,23 @@ public class ConversationController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public Map<String, String> create(@RequestBody Map<String, String> request) {
+    public Map<String, Object> create(@RequestBody Map<String, String> request) {
         var name = request.getOrDefault("name", "Untitled");
-        var conversation = conversationService.create(name, request.get("providerId"));
-        return Map.of("conversationId", conversation.id(), "name", conversation.name(), "providerId", conversation.providerId());
+        var providerId = request.get("providerId");
+        if (providerId != null && providerId.isBlank()) providerId = null;
+        var conversation = conversationService.create(name, providerId);
+        var out = new HashMap<String, Object>();
+        out.put("conversationId", conversation.id());
+        out.put("name", conversation.name());
+        out.put("providerId", conversation.providerId());
+        return out;
+    }
+
+    @PatchMapping("/{id}")
+    public Conversation update(@PathVariable String id, @RequestBody Map<String, String> request) {
+        var providerId = request.get("providerId");
+        if (providerId != null && providerId.isBlank()) providerId = null;
+        return conversationService.updateProvider(id, providerId);
     }
 
     @PostMapping("/{id}/messages")
