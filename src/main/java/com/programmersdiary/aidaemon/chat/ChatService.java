@@ -111,7 +111,7 @@ public class ChatService {
         var config = configRepository.findById(providerId)
                 .orElseThrow(() -> new IllegalArgumentException("Provider not found: " + providerId));
 
-        var toolLog = new ArrayList<ChatMessage>();
+        final var toolLog = new ArrayList<ChatMessage>();
         var loggingTools = new ArrayList<ToolCallback>();
         Arrays.asList(ToolCallbacks.from(new ChatTools(skillsService, jobExecutor, providerId)))
                 .forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog)));
@@ -120,10 +120,10 @@ public class ChatService {
         mcpService.getToolCallbacksByServer().forEach((serverName, callbacks) ->
                 callbacks.forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog, serverName))));
 
-        DelegationTools delegationTools = null;
-        if (delegationEnabled && conversationId != null) {
-            var conversation = conversationRepository.findById(conversationId).orElse(null);
-            delegationTools = new DelegationTools(conversationRepository, conversationId, providerId);
+        final DelegationTools delegationTools = (delegationEnabled && conversationId != null)
+                ? new DelegationTools(conversationRepository, conversationId, providerId)
+                : null;
+        if (delegationTools != null) {
             Arrays.asList(ToolCallbacks.from(delegationTools))
                     .forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog)));
         }
@@ -143,10 +143,8 @@ public class ChatService {
                 .map(this::toSpringMessage)
                 .toList());
 
-        var pendingIds = delegationTools != null
-                ? delegationTools.getPendingSubConversationIds() : List.<String>of();
-        var contentAccum = new StringBuilder();
-        var reasoningAccum = new StringBuilder();
+        final StringBuilder contentAccum = new StringBuilder();
+        final StringBuilder reasoningAccum = new StringBuilder();
 
         return streamingModel.stream(new Prompt(springMessages))
                 .flatMap(response -> {
@@ -160,7 +158,11 @@ public class ChatService {
                         contentAccum.append(c.content());
                     }
                 })
-                .doOnComplete(() -> onComplete.accept(new ChatResult(contentAccum.toString(), toolLog, pendingIds)))
+                .doOnComplete(() -> {
+                    var pendingIds = delegationTools != null
+                            ? delegationTools.getPendingSubConversationIds() : List.<String>of();
+                    onComplete.accept(new ChatResult(contentAccum.toString(), toolLog, pendingIds));
+                })
                 .doOnError(e -> onComplete.accept(new ChatResult("[Error] " + e.getMessage(), toolLog, List.of())));
     }
 
