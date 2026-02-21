@@ -48,12 +48,9 @@ public class ChatModelFactory {
         var api = AnthropicApi.builder()
                 .apiKey(config.apiKey())
                 .build();
-        var maxTokens = 8192;
         var options = AnthropicChatOptions.builder()
                 .model(config.model() != null ? config.model() : "claude-sonnet-4-20250514")
-                .maxTokens(maxTokens)
-                .thinking(ThinkingType.ENABLED, Math.min(4096, maxTokens - 1024))
-                .temperature(1.0)
+                .maxTokens(4096)
                 .toolCallbacks(tools)
                 .build();
         return AnthropicChatModel.builder()
