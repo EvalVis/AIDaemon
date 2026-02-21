@@ -10,6 +10,7 @@ export interface Conversation {
   providerId: string;
   messages: ChatMessage[];
   parentConversationId?: string | null;
+  createdAtMillis?: number | null;
 }
 
 export interface Provider {

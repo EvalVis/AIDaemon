@@ -13,6 +13,21 @@ interface SidebarProps {
 
 type TreeNode = Conversation & { children: TreeNode[] };
 
+function formatCreationTime(ms: number): string {
+  const d = new Date(ms);
+  const now = new Date();
+  const sameDay = d.getDate() === now.getDate() && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+  if (sameDay) {
+    return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  }
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (d.getDate() === yesterday.getDate() && d.getMonth() === yesterday.getMonth()) {
+    return 'Yesterday ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  }
+  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) + ' ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+}
+
 function buildTree(conversations: Conversation[]): TreeNode[] {
   const byId = new Map<string, TreeNode>();
   for (const c of conversations) {
@@ -108,10 +123,17 @@ export default function Sidebar({
           ) : (
             <span className="w-6 shrink-0 inline-block" />
           )}
-          <span className={`flex-1 text-sm whitespace-nowrap overflow-hidden text-ellipsis ${isSub ? 'text-[0.8125rem] text-text' : 'text-text-bright'}`}>
-            {node.name}
+          <span className={`flex-1 min-w-0 flex flex-col`}>
+            <span className={`text-sm whitespace-nowrap overflow-hidden text-ellipsis ${isSub ? 'text-[0.8125rem] text-text' : 'text-text-bright'}`}>
+              {node.name}
+            </span>
+            {node.createdAtMillis != null && (
+              <span className="text-[0.6875rem] text-text-dim">
+                {formatCreationTime(node.createdAtMillis)}
+              </span>
+            )}
           </span>
-          <span className="text-xs text-text-dim min-w-5 text-right">{node.messages.length}</span>
+          <span className="text-xs text-text-dim min-w-5 text-right shrink-0">{node.messages.length}</span>
           <button
             className="bg-transparent border-0 text-text-dim text-base cursor-pointer py-0 px-1 leading-none transition-colors duration-150 hover:text-danger"
             onClick={(e) => {

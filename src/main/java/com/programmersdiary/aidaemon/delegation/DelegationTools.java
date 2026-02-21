@@ -33,7 +33,7 @@ public class DelegationTools {
         var subConversation = new Conversation(
                 UUID.randomUUID().toString(), name, providerId,
                 new ArrayList<>(List.of(ChatMessage.of("user", instruction))),
-                parentConversationId);
+                parentConversationId, System.currentTimeMillis());
         conversationRepository.save(subConversation);
         pendingSubConversationIds.add(subConversation.id());
         return "Delegated to sub-agent '" + name + "' (" + subConversation.id() + "). " +

@@ -35,7 +35,8 @@ public class ConversationService {
 
     public Conversation create(String name, String providerId, String parentConversationId) {
         var conversation = new Conversation(
-                UUID.randomUUID().toString(), name, providerId, new ArrayList<>(), parentConversationId);
+                UUID.randomUUID().toString(), name, providerId, new ArrayList<>(), parentConversationId,
+                System.currentTimeMillis());
         return conversationRepository.save(conversation);
     }
 
