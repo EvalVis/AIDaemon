@@ -152,7 +152,10 @@ public class ChatService {
         var reasoningAccum = new StringBuilder();
 
         return streamingModel.stream(new Prompt(springMessages))
-                .map(this::toStreamChunk)
+                .flatMap(response -> {
+                    var c = toStreamChunk(response);
+                    return c != null ? Flux.just(c) : Flux.empty();
+                })
                 .doOnNext(c -> {
                     if (StreamChunk.TYPE_REASONING.equals(c.type())) {
                         reasoningAccum.append(c.content());
@@ -165,7 +168,14 @@ public class ChatService {
     }
 
     private StreamChunk toStreamChunk(ChatResponse response) {
-        var output = response.getResult().getOutput();
+        var result = response.getResult();
+        if (result == null) {
+            return null;
+        }
+        var output = result.getOutput();
+        if (output == null) {
+            return null;
+        }
         var metadata = output.getMetadata();
         if (metadata != null) {
             var reasoning = metadata.get("reasoning");

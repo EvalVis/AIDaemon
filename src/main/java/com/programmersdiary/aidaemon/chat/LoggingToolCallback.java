@@ -25,7 +25,20 @@ public class LoggingToolCallback implements ToolCallback {
 
     @Override
     public ToolDefinition getToolDefinition() {
-        return delegate.getToolDefinition();
+        var def = delegate.getToolDefinition();
+        if (serverName == null || serverName.isBlank()) {
+            return def;
+        }
+        var prefixed = serverName + "." + def.name();
+        return ToolDefinition.builder()
+                .name(sanitizeToolName(prefixed))
+                .description(def.description())
+                .inputSchema(def.inputSchema())
+                .build();
+    }
+
+    private static String sanitizeToolName(String name) {
+        return name.replaceAll("[^a-zA-Z0-9_-]", "_");
     }
 
     @Override
