@@ -4,11 +4,17 @@ import ChatWindow from './components/ChatWindow';
 import * as api from './api';
 import type { Conversation, CreateProviderRequest, Provider } from './types';
 
+export interface StreamingContent {
+  reasoning: string;
+  answer: string;
+}
+
 export default function App() {
   const [providers, setProviders] = useState<Provider[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
+  const [streaming, setStreaming] = useState<StreamingContent | null>(null);
 
   useEffect(() => {
     api.fetchProviders().then(setProviders);
@@ -50,30 +56,36 @@ export default function App() {
       ),
     );
     setSending(true);
-    try {
-      const response = await api.sendMessage(activeId, message);
-      const refreshed = await api.fetchConversations();
-      setConversations(refreshed);
-      if (!refreshed.find((c) => c.id === activeId)) {
+    setStreaming({ reasoning: '', answer: '' });
+    api.sendMessageStream(
+      activeId,
+      message,
+      (chunk) => {
+        setStreaming((prev) => {
+          if (!prev) return prev;
+          if (chunk.type === 'reasoning') {
+            return { ...prev, reasoning: prev.reasoning + chunk.content };
+          }
+          return { ...prev, answer: prev.answer + chunk.content };
+        });
+      },
+      () => {
+        setSending(false);
+        setStreaming(null);
+        api.fetchConversations().then(setConversations);
+      },
+      () => {
+        setSending(false);
+        setStreaming(null);
         setConversations((prev) =>
           prev.map((c) =>
             c.id === activeId
-              ? { ...c, messages: [...c.messages, { role: 'assistant', content: response }] }
+              ? { ...c, messages: [...c.messages, { role: 'assistant', content: 'Error: request failed' }] }
               : c,
           ),
         );
       }
-    } catch {
-      setConversations((prev) =>
-        prev.map((c) =>
-          c.id === activeId
-            ? { ...c, messages: [...c.messages, { role: 'assistant', content: 'Error: request failed' }] }
-            : c,
-        ),
-      );
-    } finally {
-      setSending(false);
-    }
+    );
   };
 
   return (
@@ -90,6 +102,7 @@ export default function App() {
       <ChatWindow
         conversation={activeConversation}
         sending={sending}
+        streaming={streaming}
         onSend={handleSend}
       />
     </div>

@@ -3,6 +3,7 @@ package com.programmersdiary.aidaemon.chat;
 import com.programmersdiary.aidaemon.delegation.DelegationService;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
+import reactor.core.publisher.Flux;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -50,6 +51,25 @@ public class ConversationService {
         }
 
         return result.response();
+    }
+
+    public Flux<StreamChunk> sendMessageStream(String conversationId, String userMessage) {
+        var conversation = conversationRepository.findById(conversationId)
+                .orElseThrow(() -> new IllegalArgumentException("Conversation not found: " + conversationId));
+        conversation.messages().add(new ChatMessage("user", userMessage));
+        conversationRepository.save(conversation);
+
+        return chatService.stream(conversation.providerId(), conversation.messages(), conversationId, result -> {
+            conversation.messages().addAll(result.toolMessages());
+            conversation.messages().add(new ChatMessage("assistant", result.response()));
+            conversationRepository.save(conversation);
+            if (!result.pendingSubConversationIds().isEmpty()) {
+                var delegationService = delegationServiceProvider.getIfAvailable();
+                if (delegationService != null) {
+                    delegationService.startSubAgents(result.pendingSubConversationIds());
+                }
+            }
+        });
     }
 
     public Conversation get(String conversationId) {

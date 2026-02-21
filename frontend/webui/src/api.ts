@@ -34,6 +34,11 @@ export async function createConversation(name: string, providerId: string): Prom
   return res.json();
 }
 
+export interface StreamChunk {
+  type: 'reasoning' | 'answer';
+  content: string;
+}
+
 export async function sendMessage(conversationId: string, message: string): Promise<string> {
   const res = await fetch(`/api/conversations/${conversationId}/messages`, {
     method: 'POST',
@@ -42,6 +47,64 @@ export async function sendMessage(conversationId: string, message: string): Prom
   });
   const data = await res.json();
   return data.response;
+}
+
+export function sendMessageStream(
+  conversationId: string,
+  message: string,
+  onChunk: (chunk: StreamChunk) => void,
+  onDone: () => void,
+  onError: (err: unknown) => void
+): void {
+  fetch(`/api/conversations/${conversationId}/messages/stream`, {
+    method: 'POST',
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ message }),
+  })
+    .then(async (res) => {
+      if (!res.ok || !res.body) {
+        onError(new Error(res.statusText));
+        return;
+      }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const events = buffer.split('\n\n');
+        buffer = events.pop() ?? '';
+        for (const event of events) {
+          const dataLine = event.split('\n').find((l) => l.startsWith('data:'));
+          if (dataLine) {
+            const data = dataLine.slice(5).trim();
+            if (data) {
+              try {
+                onChunk(JSON.parse(data) as StreamChunk);
+              } catch {
+                // skip non-JSON
+              }
+            }
+          }
+        }
+      }
+      if (buffer.trim()) {
+        const dataLine = buffer.split('\n').find((l) => l.startsWith('data:'));
+        if (dataLine) {
+          const data = dataLine.slice(5).trim();
+          if (data) {
+            try {
+              onChunk(JSON.parse(data) as StreamChunk);
+            } catch {
+              // skip
+            }
+          }
+        }
+      }
+      onDone();
+    })
+    .catch(onError);
 }
 
 export async function deleteConversation(id: string): Promise<void> {

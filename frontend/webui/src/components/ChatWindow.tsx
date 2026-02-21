@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ChatMessage, Conversation } from '../types';
+import type { StreamingContent } from '../App';
 
 interface ChatWindowProps {
   conversation: Conversation | null;
   sending: boolean;
+  streaming: StreamingContent | null;
   onSend: (message: string) => void;
 }
 
@@ -28,7 +30,7 @@ function MessageEntry({ msg }: { msg: ChatMessage }) {
   );
 }
 
-export default function ChatWindow({ conversation, sending, onSend }: ChatWindowProps) {
+export default function ChatWindow({ conversation, sending, streaming, onSend }: ChatWindowProps) {
   const [input, setInput] = useState('');
   const [hideTools, setHideTools] = useState(false);
   const messagesRef = useRef<HTMLDivElement>(null);
@@ -37,7 +39,7 @@ export default function ChatWindow({ conversation, sending, onSend }: ChatWindow
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [conversation?.messages.length]);
+  }, [conversation?.messages.length, streaming?.reasoning, streaming?.answer]);
 
   const handleSend = () => {
     const trimmed = input.trim();
@@ -80,11 +82,20 @@ export default function ChatWindow({ conversation, sending, onSend }: ChatWindow
           <MessageEntry key={i} msg={msg} />
         ))}
         {sending && (
-          <div className="message assistant loading">
+          <div className="message assistant streaming">
             <div className="message-header">
               <span className="role-label">assistant</span>
             </div>
-            <div className="message-content">Thinking…</div>
+            <div className="message-content">
+              {streaming?.reasoning ? (
+                <details className="streaming-reasoning" open>
+                  <summary>Thinking</summary>
+                  <pre className="reasoning-text">{streaming.reasoning}</pre>
+                </details>
+              ) : null}
+              {streaming?.reasoning && streaming?.answer ? <div className="streaming-divider" /> : null}
+              <span className="streaming-answer">{streaming?.answer ?? (streaming ? '' : 'Thinking…')}</span>
+            </div>
           </div>
         )}
         <div ref={bottomRef} />

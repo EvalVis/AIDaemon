@@ -13,15 +13,19 @@ import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.model.StreamingChatModel;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import reactor.core.publisher.Flux;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.Consumer;
 
 @Service
 public class ChatService {
@@ -102,6 +106,79 @@ public class ChatService {
         } catch (Exception e) {
             return new ChatResult("[Error] " + e.getMessage(), toolLog, List.of());
         }
+    }
+
+    public Flux<StreamChunk> stream(String providerId, List<ChatMessage> messages, String conversationId,
+                                   Consumer<ChatResult> onComplete) {
+        var config = configRepository.findById(providerId)
+                .orElseThrow(() -> new IllegalArgumentException("Provider not found: " + providerId));
+
+        var toolLog = new ArrayList<ChatMessage>();
+        var loggingTools = new ArrayList<ToolCallback>();
+        Arrays.asList(ToolCallbacks.from(new ChatTools(skillsService, jobExecutor, providerId)))
+                .forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog)));
+        Arrays.asList(ToolCallbacks.from(new ShellTool(shellAccessService)))
+                .forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog)));
+        mcpService.getToolCallbacksByServer().forEach((serverName, callbacks) ->
+                callbacks.forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog, serverName))));
+
+        DelegationTools delegationTools = null;
+        boolean isSubConversation = false;
+        if (delegationEnabled && conversationId != null) {
+            var conversation = conversationRepository.findById(conversationId).orElse(null);
+            isSubConversation = conversation != null && conversation.parentConversationId() != null;
+            delegationTools = new DelegationTools(conversationRepository, conversationId, providerId);
+            Arrays.asList(ToolCallbacks.from(delegationTools))
+                    .forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog)));
+        }
+
+        var chatModel = chatModelFactory.create(config, loggingTools);
+        if (!(chatModel instanceof StreamingChatModel streamingModel)) {
+            var result = chat(providerId, messages, conversationId);
+            onComplete.accept(result);
+            return Flux.just(new StreamChunk(StreamChunk.TYPE_ANSWER, result.response()));
+        }
+
+        var springMessages = new ArrayList<Message>();
+        springMessages.add(new SystemMessage(buildSystemContext(isSubConversation)));
+        springMessages.addAll(messages.stream()
+                .filter(m -> !"tool".equals(m.role()))
+                .map(this::toSpringMessage)
+                .toList());
+
+        var pendingIds = delegationTools != null
+                ? delegationTools.getPendingSubConversationIds() : List.<String>of();
+        var contentAccum = new StringBuilder();
+        var reasoningAccum = new StringBuilder();
+
+        return streamingModel.stream(new Prompt(springMessages))
+                .map(this::toStreamChunk)
+                .doOnNext(c -> {
+                    if (StreamChunk.TYPE_REASONING.equals(c.type())) {
+                        reasoningAccum.append(c.content());
+                    } else {
+                        contentAccum.append(c.content());
+                    }
+                })
+                .doOnComplete(() -> onComplete.accept(new ChatResult(contentAccum.toString(), toolLog, pendingIds)))
+                .doOnError(e -> onComplete.accept(new ChatResult("[Error] " + e.getMessage(), toolLog, List.of())));
+    }
+
+    private StreamChunk toStreamChunk(ChatResponse response) {
+        var output = response.getResult().getOutput();
+        var metadata = output.getMetadata();
+        if (metadata != null) {
+            var reasoning = metadata.get("reasoning");
+            if (reasoning != null && !reasoning.toString().isEmpty()) {
+                return new StreamChunk(StreamChunk.TYPE_REASONING, reasoning.toString());
+            }
+            var reasoningContent = metadata.get("reasoning_content");
+            if (reasoningContent != null && !reasoningContent.toString().isEmpty()) {
+                return new StreamChunk(StreamChunk.TYPE_REASONING, reasoningContent.toString());
+            }
+        }
+        var text = output.getText();
+        return new StreamChunk(StreamChunk.TYPE_ANSWER, text != null ? text : "");
     }
 
     private String buildSystemContext(boolean isSubConversation) {
