@@ -448,6 +448,39 @@ body {
 .message-content {
   color: var(--text-bright);
   margin-top: 6px;
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+
+.message-tool-part {
+  margin: 8px 0;
+  padding: 8px 10px;
+  background: var(--tool-bg);
+  border: 1px solid #2d4a2d;
+  border-radius: var(--radius);
+  color: #8fbc8f;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.message-tool-part summary {
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #7cb87c;
+}
+
+.message-tool-part .tool-content {
+  margin-top: 6px;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 0.8rem;
+  color: #8fbc8f;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 /* Chat input */
