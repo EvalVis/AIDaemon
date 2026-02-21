@@ -92,7 +92,7 @@ public class ChatService {
         var chatModel = chatModelFactory.create(config, loggingTools);
 
         var springMessages = new ArrayList<Message>();
-        springMessages.add(new SystemMessage(buildSystemContext(isSubConversation)));
+        springMessages.add(new SystemMessage(buildSystemContext()));
         springMessages.addAll(messages.stream()
                 .filter(m -> !"tool".equals(m.role()))
                 .map(this::toSpringMessage)
@@ -123,10 +123,8 @@ public class ChatService {
                 callbacks.forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog, serverName))));
 
         DelegationTools delegationTools = null;
-        boolean isSubConversation = false;
         if (delegationEnabled && conversationId != null) {
             var conversation = conversationRepository.findById(conversationId).orElse(null);
-            isSubConversation = conversation != null && conversation.parentConversationId() != null;
             delegationTools = new DelegationTools(conversationRepository, conversationId, providerId);
             Arrays.asList(ToolCallbacks.from(delegationTools))
                     .forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog)));
@@ -140,7 +138,7 @@ public class ChatService {
         }
 
         var springMessages = new ArrayList<Message>();
-        springMessages.add(new SystemMessage(buildSystemContext(isSubConversation)));
+        springMessages.add(new SystemMessage(buildSystemContext()));
         springMessages.add(new SystemMessage("You are given some previous conversation below. Your chatting partner might refer to something in it."));
         springMessages.addAll(messages.stream()
                 .filter(m -> !"tool".equals(m.role()))
