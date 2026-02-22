@@ -36,6 +36,9 @@ import java.util.function.Consumer;
 @Service
 public class ChatService {
 
+    private static final List<String> REASONING_KEYS =
+            List.of("thinking", "reasoningContent", "reasoning_content", "reasoning");
+
     private final ProviderConfigRepository configRepository;
     private final ChatModelFactory chatModelFactory;
     private final SkillsService skillsService;
@@ -133,7 +136,7 @@ public class ChatService {
     private static String extractReasoning(AssistantMessage output) {
         var metadata = output.getMetadata();
         if (metadata == null) return null;
-        for (var key : List.of("thinking", "reasoningContent", "reasoning_content", "reasoning")) {
+        for (var key : REASONING_KEYS) {
             var value = metadata.get(key);
             if (value != null && !value.toString().isEmpty()) {
                 return value.toString();
@@ -250,7 +253,7 @@ public class ChatService {
         }
         var metadata = output.getMetadata();
         if (metadata != null) {
-            for (var key : List.of("thinking", "reasoningContent", "reasoning_content", "reasoning")) {
+            for (var key : REASONING_KEYS) {
                 var value = metadata.get(key);
                 if (value != null && !value.toString().isEmpty()) {
                     return new StreamChunk(StreamChunk.TYPE_REASONING, value.toString());
@@ -358,6 +361,7 @@ public class ChatService {
             for (var o : parts) {
                 if (!(o instanceof Map<?, ?> p)) continue;
                 var type = p.get("type");
+                if (type != null && REASONING_KEYS.contains(type.toString())) continue;
                 var partContent = p.get("content");
                 if (partContent == null) continue;
                 var contentStr = partContent.toString();
