@@ -90,9 +90,10 @@ public class ChatService {
         var config = configRepository.findById(providerId)
                 .orElseThrow(() -> new IllegalArgumentException("Provider not found: " + providerId));
 
+        var filtered = messages.stream().filter(m -> !"tool".equals(m.role())).toList();
         var toolLog = new ArrayList<ChatMessage>();
         var loggingTools = new ArrayList<ToolCallback>();
-        Arrays.asList(ToolCallbacks.from(new ChatTools(skillsService, jobExecutor, providerId)))
+        Arrays.asList(ToolCallbacks.from(new ChatTools(skillsService, jobExecutor, providerId, filtered, charsContextWindow)))
                 .forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog)));
         Arrays.asList(ToolCallbacks.from(new ShellTool(shellAccessService)))
                 .forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog)));
@@ -153,11 +154,12 @@ public class ChatService {
         var config = configRepository.findById(providerId)
                 .orElseThrow(() -> new IllegalArgumentException("Provider not found: " + providerId));
 
+        var filtered = messages.stream().filter(m -> !"tool".equals(m.role())).toList();
         final var toolLog = new ArrayList<ChatMessage>();
         var sink = Sinks.many().unicast().<StreamChunk>onBackpressureBuffer();
         var onToolChunk = (Consumer<StreamChunk>) c -> sink.tryEmitNext(c);
         var loggingTools = new ArrayList<ToolCallback>();
-        Arrays.asList(ToolCallbacks.from(new ChatTools(skillsService, jobExecutor, providerId)))
+        Arrays.asList(ToolCallbacks.from(new ChatTools(skillsService, jobExecutor, providerId, filtered, charsContextWindow)))
                 .forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog, null, onToolChunk)));
         Arrays.asList(ToolCallbacks.from(new ShellTool(shellAccessService)))
                 .forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog, null, onToolChunk)));
@@ -290,7 +292,13 @@ public class ChatService {
             .toList();
         var history = filtered.subList(0, filtered.size() - 1);
         if (!history.isEmpty()) {
-            springMessages.addAll(conversationHistory(history));
+            var trimmed = trimToContextWindow(history, charsContextWindow);
+            int firstInContext = history.size() - trimmed.size();
+            springMessages.add(new SystemMessage(
+                "This conversation has " + filtered.size() + " messages. "
+                + "Your current context includes messages from index " + firstInContext + " (inclusive) to the latest. "
+                + "Use retrieve_older_messages tool to fetch earlier messages if needed."));
+            springMessages.addAll(conversationHistory(trimmed));
         }
         springMessages.add(toNotCachedSpringMessage(filtered.getLast()));
         return promptOptions != null
@@ -314,12 +322,11 @@ public class ChatService {
         return result;
     }
 
-    private List<Message> conversationHistory(List<ChatMessage> history) {
-        var trimmed = trimToContextWindow(history, charsContextWindow);
+    private List<Message> conversationHistory(List<ChatMessage> trimmedHistory) {
         var result = new ArrayList<Message>();
-        if (!trimmed.isEmpty()) {
-            trimmed.forEach(m -> result.add(toNotCachedSpringMessage(m)));
-            result.add(toCachedSpringMessage(trimmed.getLast()));
+        if (!trimmedHistory.isEmpty()) {
+            trimmedHistory.forEach(m -> result.add(toNotCachedSpringMessage(m)));
+            result.add(toCachedSpringMessage(trimmedHistory.getLast()));
         }
         return result;
     }

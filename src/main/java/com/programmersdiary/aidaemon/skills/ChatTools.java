@@ -1,25 +1,45 @@
 package com.programmersdiary.aidaemon.skills;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.programmersdiary.aidaemon.chat.ChatMessage;
 import com.programmersdiary.aidaemon.scheduling.ScheduledJob;
 import com.programmersdiary.aidaemon.scheduling.ScheduledJobExecutor;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
 public class ChatTools {
 
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
     private final SkillsService skillsService;
     private final ScheduledJobExecutor jobExecutor;
     private final String currentProviderId;
+    private final List<ChatMessage> conversationMessages;
+    private final int charsContextWindow;
 
     public ChatTools(SkillsService skillsService,
                      ScheduledJobExecutor jobExecutor,
                      String currentProviderId) {
+        this(skillsService, jobExecutor, currentProviderId, null, 0);
+    }
+
+    public ChatTools(SkillsService skillsService,
+                     ScheduledJobExecutor jobExecutor,
+                     String currentProviderId,
+                     List<ChatMessage> conversationMessages,
+                     int charsContextWindow) {
         this.skillsService = skillsService;
         this.jobExecutor = jobExecutor;
         this.currentProviderId = currentProviderId;
+        this.conversationMessages = conversationMessages != null ? List.copyOf(conversationMessages) : null;
+        this.charsContextWindow = charsContextWindow;
     }
 
     @Tool(description = "Save information to persistent memory. Use when the user asks you to remember something.")
@@ -90,5 +110,66 @@ public class ChatTools {
         return jobs.stream()
                 .map(j -> "- " + j.description() + " (id: " + j.id() + ", cron: " + j.cronExpression() + ")")
                 .collect(Collectors.joining("\n"));
+    }
+
+    @Tool(description = "Retrieve older conversation messages by index range. Provide startIndex (inclusive); optionally endIndex (exclusive). If endIndex is omitted, returns all messages from startIndex to the end. Result is capped by context window. Returns: startIndex, actualEndIndex (exclusive), and the message list.")
+    public String retrieveOlderMessages(
+            @ToolParam(description = "Start index (inclusive), 0-based") int startIndexInclusive,
+            @ToolParam(description = "End index (exclusive). Omit to include all from startIndex to end") Integer endIndexExclusive) {
+        if (conversationMessages == null || conversationMessages.isEmpty()) {
+            return "No conversation context available.";
+        }
+        int size = conversationMessages.size();
+        if (startIndexInclusive < 0 || startIndexInclusive >= size) {
+            return "Invalid startIndexInclusive: " + startIndexInclusive + ". Conversation has " + size + " messages (indices 0 to " + (size - 1) + ").";
+        }
+        int end = endIndexExclusive == null ? size : Math.min(endIndexExclusive, size);
+        if (end <= startIndexInclusive) {
+            return "Invalid range: endIndexExclusive must be greater than startIndexInclusive.";
+        }
+        int actualEnd = startIndexInclusive;
+        int totalChars = 0;
+        boolean hasLimit = charsContextWindow > 0;
+        for (int i = startIndexInclusive; i < end; i++) {
+            String displayContent = contentWithoutReasoningAndTools(conversationMessages.get(i));
+            int len = displayContent.length();
+            if (hasLimit && totalChars + len > charsContextWindow) {
+                break;
+            }
+            totalChars += len;
+            actualEnd = i + 1;
+        }
+        var slice = conversationMessages.subList(startIndexInclusive, actualEnd);
+        var lines = new ArrayList<String>();
+        for (int i = 0; i < slice.size(); i++) {
+            var m = slice.get(i);
+            String displayContent = contentWithoutReasoningAndTools(m);
+            lines.add("[" + (startIndexInclusive + i) + "] " + m.role() + ": " + displayContent);
+        }
+        return "startIndex: " + startIndexInclusive + ", actualEndIndex: " + actualEnd + ", messages:\n" + String.join("\n", lines);
+    }
+
+    private static String contentWithoutReasoningAndTools(ChatMessage message) {
+        String content = message.content();
+        if (content == null) return "";
+        if (!"assistant".equals(message.role())) return content;
+        if (!content.trim().startsWith("{\"parts\":")) return content;
+        try {
+            @SuppressWarnings("unchecked")
+            var map = OBJECT_MAPPER.readValue(content, Map.class);
+            var parts = (List<?>) map.get("parts");
+            if (parts == null) return content;
+            var sb = new StringBuilder();
+            for (var o : parts) {
+                if (!(o instanceof Map<?, ?> p)) continue;
+                var type = p.get("type");
+                if (!"answer".equals(type)) continue;
+                var partContent = p.get("content");
+                if (partContent != null) sb.append(partContent.toString());
+            }
+            return sb.toString();
+        } catch (JsonProcessingException | ClassCastException e) {
+            return content;
+        }
     }
 }
