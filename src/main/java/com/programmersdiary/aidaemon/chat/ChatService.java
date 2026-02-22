@@ -233,9 +233,6 @@ public class ChatService {
         .metadata(cacheControl())
         .build());
         springMessages.addAll(memoryMessages());
-        if (extraSystemMessage != null) {
-            springMessages.add(new SystemMessage(extraSystemMessage));
-        }
         var filtered = messages
             .stream()
             .filter(m -> !"tool".equals(m.role()))
@@ -249,6 +246,9 @@ public class ChatService {
                 + "Your current context includes messages from index " + firstInContext + " (inclusive) to the latest. "
                 + "Use retrieve_older_messages tool to fetch earlier messages if needed."));
             springMessages.addAll(conversationHistory(trimmed));
+        }
+        if (extraSystemMessage != null) {
+            springMessages.add(new SystemMessage(extraSystemMessage));
         }
         springMessages.add(toNotCachedSpringMessage(filtered.getLast()));
         return promptOptions != null
