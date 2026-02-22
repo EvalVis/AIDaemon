@@ -84,6 +84,7 @@ graph TB
 ### Delegation
 
 When delegation is enabled, the main agent can spawn sub-agents to handle subtasks in parallel. Sub-agents run asynchronously; when they finish, the parent is woken with a status update and can synthesize results or send revision work.
+Sub-agents can create their own subagents. The diagram shows one parent and only top subagents for simplicitly.
 
 ```mermaid
 sequenceDiagram
@@ -95,16 +96,14 @@ sequenceDiagram
 
     User->>Parent: Message
     Parent->>Parent: Estimates time > threshold
-    Parent->>DelegationService: delegateToSubAgent(name, instruction) x2
-    DelegationService->>Sub1: Create & run sub-conversation
-    DelegationService->>Sub2: Create & run sub-conversation
-    Parent->>User: "Delegated; will respond when ready"
-    par
-        Sub1->>DelegationService: Completed
-        Sub2->>DelegationService: Completed
-    end
-    DelegationService->>Parent: [Delegation Status Update] with sub results
-    Parent->>Parent: Review; addWorkToSubAgent if needed or synthesize
+    Parent->>DelegationService: delegateToSubAgent x2
+    DelegationService->>Sub1: Create and run sub-conversation
+    DelegationService->>Sub2: Create and run sub-conversation
+    Parent->>User: Delegated, will respond when ready
+    Sub1->>DelegationService: Completed
+    Sub2->>DelegationService: Completed
+    DelegationService->>Parent: Delegation Status Update with sub results
+    Parent->>Parent: Review, addWorkToSubAgent or synthesize
     Parent->>User: Final response
 ```
 
