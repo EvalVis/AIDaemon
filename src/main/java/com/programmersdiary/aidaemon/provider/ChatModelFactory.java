@@ -3,7 +3,10 @@ package com.programmersdiary.aidaemon.provider;
 import org.springframework.ai.anthropic.AnthropicChatModel;
 import org.springframework.ai.anthropic.AnthropicChatOptions;
 import org.springframework.ai.anthropic.api.AnthropicApi;
-import org.springframework.ai.anthropic.api.AnthropicApi.ThinkingType;
+import org.springframework.ai.anthropic.api.AnthropicCacheOptions;
+import org.springframework.ai.anthropic.api.AnthropicCacheStrategy;
+import org.springframework.ai.anthropic.api.AnthropicCacheTtl;
+import org.springframework.ai.chat.messages.MessageType;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.ollama.OllamaChatModel;
 import org.springframework.ai.ollama.api.OllamaApi;
@@ -37,6 +40,7 @@ public class ChatModelFactory {
         var options = OpenAiChatOptions.builder()
                 .model(config.model() != null ? config.model() : "gpt-4o")
                 .toolCallbacks(tools)
+                .promptCacheKey("aidaemon:" + config.id())
                 .build();
         return OpenAiChatModel.builder()
                 .openAiApi(apiBuilder.build())
@@ -52,6 +56,10 @@ public class ChatModelFactory {
                 .model(config.model() != null ? config.model() : "claude-sonnet-4-20250514")
                 .maxTokens(4096)
                 .toolCallbacks(tools)
+                .cacheOptions(AnthropicCacheOptions.builder()
+                        .strategy(AnthropicCacheStrategy.CONVERSATION_HISTORY)
+                        .messageTypeTtl(MessageType.SYSTEM, AnthropicCacheTtl.ONE_HOUR)
+                        .build())
                 .build();
         return AnthropicChatModel.builder()
                 .anthropicApi(api)
@@ -67,6 +75,7 @@ public class ChatModelFactory {
         var options = OpenAiChatOptions.builder()
                 .model(config.model() != null ? config.model() : "gemini-2.0-flash")
                 .toolCallbacks(tools)
+                .promptCacheKey("aidaemon:" + config.id())
                 .build();
         return OpenAiChatModel.builder()
                 .openAiApi(api)
