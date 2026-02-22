@@ -1,6 +1,6 @@
 # AI Daemon
 
-A lightweight AI framework built on Spring Boot 4 and Spring AI. Connect any LLM provider, extend capabilities with skills and MCPs, schedule autonomous jobs, and interact through REST or terminal -- all from a single self-hosted service.
+A lightweight AI framework built on Spring Boot 4 and Spring AI. Connect any LLM provider, extend capabilities with skills and MCPs, schedule autonomous jobs, and interact through REST, Web UI, or terminal -- all from a single self-hosted service.
 
 ![Example use case](images/example.png)
 
@@ -12,8 +12,14 @@ graph TB
 
     subgraph Interface["Interface Layer"]
         REST[REST API]
+        WebUI[Web UI]
         CLI[Interactive CLI]
     end
+
+    User -->|HTTP / curl| REST
+    User -->|Browser| WebUI
+    User -->|Terminal| CLI
+    WebUI --> REST
 
     subgraph Engine["AI Engine"]
         Chat[Chat Service]
@@ -43,12 +49,11 @@ graph TB
         ProvidersJSON[providers.json]
         MemoryJSON[memory.json]
         JobsJSON[jobs.json]
+        ConversationsDir[conversations/]
         SkillsDir[skills/]
         McpsDir[mcps/]
     end
 
-    User -->|HTTP / curl| REST
-    User -->|Terminal| CLI
     REST --> Chat
     REST --> Conv
     CLI --> Conv
@@ -63,6 +68,7 @@ graph TB
     Skills -->|read| SkillsDir
     Scheduler -->|persist| JobsJSON
     Scheduler -->|executes via| Chat
+    Conv -->|persist| ConversationsDir
     MCPTools --> MCPRemote & MCPLocal
     MCPRemote & MCPLocal -.->|config| McpsDir
     Smithery -->|install all files| SkillsDir
@@ -75,15 +81,51 @@ graph TB
     style External fill:#1a7a7a,stroke:#333,color:#fff
 ```
 
+### Delegation
+
+When delegation is enabled, the main agent can spawn sub-agents to handle subtasks in parallel. Sub-agents run asynchronously; when they finish, the parent is woken with a status update and can synthesize results or send revision work.
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Parent as Parent Agent
+    participant DelegationService
+    participant Sub1 as Sub-agent 1
+    participant Sub2 as Sub-agent 2
+
+    User->>Parent: Message
+    Parent->>Parent: Estimates time > threshold
+    Parent->>DelegationService: delegateToSubAgent(name, instruction) x2
+    DelegationService->>Sub1: Create & run sub-conversation
+    DelegationService->>Sub2: Create & run sub-conversation
+    Parent->>User: "Delegated; will respond when ready"
+    par
+        Sub1->>DelegationService: Completed
+        Sub2->>DelegationService: Completed
+    end
+    DelegationService->>Parent: [Delegation Status Update] with sub results
+    Parent->>Parent: Review; addWorkToSubAgent if needed or synthesize
+    Parent->>User: Final response
+```
+
+- **Tools:** `delegateToSubAgent(name, instruction)` creates a sub-conversation and queues it. `addWorkToSubAgent(subConversationId, instruction)` sends follow-up work to a sub-agent after reviewing its output.
+- **Config:** `aidaemon.delegation-enabled=true`, `aidaemon.delegation-threshold-seconds=30`. The model is instructed to delegate when its estimated time exceeds the threshold.
+
 ## Features
 
 - **Multi-provider** -- OpenAI, Anthropic, Gemini, Ollama. Add/remove providers at runtime with API key persistence.
-- **Conversations** -- Stateful multi-turn sessions with full chat history.
+- **Conversations** -- Stateful multi-turn sessions with full chat history, persisted under `~/.aidaemon/conversations/`. The provider (agent) is selected **per prompt**: set or change it for the conversation so the next message uses that provider. Conversations have creation timestamps and can be sorted by time.
+- **Streaming** -- Conversation messages can be sent with `POST /api/conversations/{id}/messages/stream` (SSE). Chunks include `reasoning`, `answer`, and `tool` types so the UI can show thinking and tools in real time.
+- **Delegation** -- Optional sub-agent delegation: the AI splits work into sub-conversations that run in parallel; when they complete, the parent is notified and can synthesize or request revisions. Enable with `aidaemon.delegation-enabled=true`.
+- **Thinking / reasoning** -- Supported for providers that expose it (e.g. Anthropic extended thinking). Reasoning is streamed separately and shown in the Web UI; scheduled job results include thinking in the stored output.
+- **Prompt caching** -- Conversation-history and prompt caching are used where supported (e.g. Anthropic, Gemini) to reduce cost and latency.
+- **Context window** -- Optional `aidaemon.chars-context-window` (character limit) trims older messages so the prompt fits. The AI can use the `retrieveOlderMessages` tool to fetch older conversation content by index when context is trimmed.
 - **Persistent memory** -- AI can save and recall information across sessions via `memory.json`.
 - **Skills** -- Drop instruction files into `~/.aidaemon/skills/` or install from [Smithery](https://smithery.ai) via REST endpoint. The AI reads them for domain-specific context.
 - **MCP support** -- Connect remote (Streamable HTTP, SSE) and local (stdio) MCP servers. Drop JSON configs into `~/.aidaemon/mcps/` and reload.
 - **Scheduled jobs** -- AI creates cron jobs (recurring or one-time) that autonomously execute instructions on schedule. AI can also list and cancel them.
 - **Shell access** -- Optionally allow the AI to execute host commands (git, docker, curl, etc.). Controlled by a global toggle endpoint.
+- **Web UI** -- React app in `frontend/webui/` for providers, conversations, and streaming chat with reasoning and tool visibility.
 - **Interactive CLI** -- Terminal-based chat with provider selection, conversation management, and shell toggle.
 
 ## Prerequisites
@@ -134,16 +176,29 @@ curl -X POST http://localhost:8080/api/chat/{providerId} \
 
 ### 3. Conversations (Stateful)
 
+Conversations are persisted under `~/.aidaemon/conversations/`. Each has an optional name. The provider is selected per prompt: set it when creating or via `PATCH`; the next message you send will use that provider.
+
 ```bash
 # Create a conversation
 curl -X POST http://localhost:8080/api/conversations \
   -H "Content-Type: application/json" \
-  -d '{"providerId":"<id>"}'
+  -d '{"name":"My chat","providerId":"<id>"}'
 
 # Send messages (history is maintained server-side)
 curl -X POST http://localhost:8080/api/conversations/{id}/messages \
   -H "Content-Type: application/json" \
   -d '{"message":"What did I just ask you?"}'
+
+# Stream response (SSE: reasoning, answer, tool chunks)
+curl -X POST http://localhost:8080/api/conversations/{id}/messages/stream \
+  -H "Content-Type: application/json" \
+  -d '{"message":"Explain X"}' \
+  -N
+
+# Set which provider to use for the next prompt(s)
+curl -X PATCH http://localhost:8080/api/conversations/{id} \
+  -H "Content-Type: application/json" \
+  -d '{"providerId":"other-provider-id"}'
 ```
 
 ### 4. Interactive CLI
@@ -158,6 +213,18 @@ On Windows PowerShell:
 ```
 
 Commands inside CLI: `/quit`, `/new` (new conversation), `/shell` (toggle shell access).
+
+### 5. Web UI
+
+From the project root, build and run the React UI (proxy to the backend):
+
+```bash
+cd frontend/webui
+npm install
+npm run dev
+```
+
+Connect to the URL shown (e.g. Vite dev server). Configure providers and conversations, then chat; responses stream with reasoning and tool calls when available.
 
 ## Skills
 
@@ -270,7 +337,9 @@ curl -X DELETE http://localhost:8080/api/jobs/{id}
 | `DELETE` | `/api/providers/{id}` | Remove a provider |
 | `POST` | `/api/chat/{providerId}` | Stateless chat |
 | `POST` | `/api/conversations` | Create a conversation |
+| `PATCH` | `/api/conversations/{id}` | Set provider for next prompt(s) (e.g. providerId) |
 | `POST` | `/api/conversations/{id}/messages` | Send a message |
+| `POST` | `/api/conversations/{id}/messages/stream` | Send a message (SSE stream) |
 | `GET` | `/api/conversations` | List conversations |
 | `DELETE` | `/api/conversations/{id}` | Delete a conversation |
 | `GET` | `/api/skills` | List installed skills |
@@ -295,9 +364,23 @@ All persistent data lives in `~/.aidaemon/`:
 ├── providers.json     # Registered LLM providers and API keys
 ├── memory.json        # AI's persistent memory
 ├── jobs.json          # Scheduled job definitions
+├── conversations/     # Conversation JSON files (stateful chats)
 ├── skills/            # Skill folders (SKILL.md + resources)
 └── mcps/              # MCP server config JSON files
 ```
+
+## Configuration
+
+Optional `application.yaml` / env properties:
+
+| Property | Default | Description |
+|----------|---------|-------------|
+| `aidaemon.config-dir` | `~/.aidaemon` | Data directory |
+| `aidaemon.shell-access` | `false` | Allow AI shell execution |
+| `aidaemon.delegation-enabled` | `false` | Enable sub-agent delegation |
+| `aidaemon.delegation-threshold-seconds` | `30` | Estimated seconds above which the model should delegate |
+| `aidaemon.chars-context-window` | `0` | Max characters of history sent to the model (0 = no trim). Use with `retrieveOlderMessages` for long chats |
+| `aidaemon.system-instructions` | (see application.yaml) | System prompt for the model |
 
 ## Caution
 
