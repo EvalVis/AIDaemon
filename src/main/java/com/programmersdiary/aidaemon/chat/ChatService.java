@@ -264,27 +264,76 @@ public class ChatService {
         return new StreamChunk(StreamChunk.TYPE_ANSWER, text != null ? text : "");
     }
 
+    private static Map<String, Object> cacheControl() {
+        return Map.of("cache_control", Map.of("type", "ephemeral"));
+    }
+
     private Prompt buildPrompt(List<ChatMessage> messages) {
         var springMessages = new ArrayList<Message>();
-        springMessages.add(new SystemMessage(systemInstructions));
-        springMessages.addAll(messages.stream()
-                .filter(m -> !"tool".equals(m.role()))
-                .map(this::toSpringMessage)
-                .toList());
-        var memory = skillsService.readMemory();
-        if (!memory.isEmpty()) {
-            var memoryText = new StringBuilder("Here is your memory:\n");
-            memory.forEach((k, v) -> memoryText.append("- ").append(k).append(": ").append(v).append("\n"));
-            springMessages.add(new UserMessage(memoryText.toString()));
-        }
+        springMessages
+        .add(SystemMessage.builder().text(systemInstructions)
+        .metadata(cacheControl())
+        .build());
+        springMessages.addAll(memoryMessages());
+        var filtered = messages
+            .stream()
+            .filter(m -> !"tool".equals(m.role()))
+            .toList();
+        springMessages.addAll(conversationHistory(filtered.subList(0, filtered.size() - 1)));
+        springMessages.add(toNotCachedSpringMessage(filtered.getLast()));
         return new Prompt(springMessages);
     }
 
-    private Message toSpringMessage(ChatMessage message) {
+    private List<Message> memoryMessages() {
+        var memory = skillsService.readMemory().entrySet().stream().toList();
+        var result = new ArrayList<Message>();
+        memory
+            .subList(0, memory.size() - 1)
+            .forEach(e -> result.add(new SystemMessage(e.getKey() + ": " + e.getValue())));
+        result.add(
+            SystemMessage
+            .builder()
+            .text(memory.getLast().getKey() + ": " + memory.getLast().getValue())
+            .metadata(cacheControl())
+            .build()
+        );
+        return result;
+    }
+
+    private List<Message> conversationHistory(List<ChatMessage> history) {
+        var result = new ArrayList<Message>();
+        history.forEach(m -> result.add(toNotCachedSpringMessage(m)));
+        result.add(toCachedSpringMessage(history.getLast()));
+        return result;
+    }
+
+    private Message toNotCachedSpringMessage(ChatMessage message) {
         return switch (message.role()) {
             case "system" -> new SystemMessage(message.content());
-            case "assistant" -> new AssistantMessage(flattenStructuredContent(message.content()));
+            case "assistant" -> new AssistantMessage(
+                flattenStructuredContent(message.content())
+            );
             default -> new UserMessage(message.content());
+        };
+    }
+
+    private Message toCachedSpringMessage(ChatMessage message) {
+        return switch (message.role()) {
+            case "system" -> SystemMessage
+                .builder()
+                .text(message.content())
+                .metadata(cacheControl())
+                .build();
+            case "assistant" -> AssistantMessage
+                .builder()
+                .content(flattenStructuredContent(message.content()))
+                .properties(cacheControl())
+                .build();
+            default -> UserMessage
+                .builder()
+                .text(message.content())
+                .metadata(cacheControl())
+                .build();
         };
     }
 
