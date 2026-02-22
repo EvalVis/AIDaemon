@@ -279,7 +279,10 @@ public class ChatService {
             .stream()
             .filter(m -> !"tool".equals(m.role()))
             .toList();
-        springMessages.addAll(conversationHistory(filtered.subList(0, filtered.size() - 1)));
+        var history = filtered.subList(0, filtered.size() - 1);
+        if (!history.isEmpty()) {
+            springMessages.addAll(conversationHistory(history));
+        }
         springMessages.add(toNotCachedSpringMessage(filtered.getLast()));
         return new Prompt(springMessages);
     }
