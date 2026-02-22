@@ -163,7 +163,7 @@ public class DelegationService {
                     .append("But if you think you don't need more data you can respond to your caller without waiting for other sub-agents.");
         }
 
-        return sb.toString();
+        return sb.toString().trim();
     }
 
     @PreDestroy
