@@ -59,9 +59,12 @@ public class ConversationService {
             throw new IllegalArgumentException("No agent selected for this conversation");
         }
         conversation.messages().add(ChatMessage.of("user", userMessage));
-        var result = chatService.chat(conversation.providerId(), conversation.messages(), conversationId);
-        conversation.messages().addAll(result.toolMessages());
-        conversation.messages().add(ChatMessage.of("assistant", result.response()));
+        var result = chatService.streamAndCollect(conversation.providerId(), conversation.messages(), conversationId);
+        if (result.orderedParts() != null && !result.orderedParts().isEmpty()) {
+            conversation.messages().add(ChatMessage.of("assistant", toPartsJson(result.orderedParts())));
+        } else {
+            conversation.messages().add(ChatMessage.of("assistant", result.response()));
+        }
         conversationRepository.save(conversation);
 
         if (!result.pendingSubConversationIds().isEmpty()) {
@@ -85,15 +88,8 @@ public class ConversationService {
 
         return chatService.stream(conversation.providerId(), conversation.messages(), conversationId, result -> {
             if (result.orderedParts() != null && !result.orderedParts().isEmpty()) {
-                try {
-                    var content = OBJECT_MAPPER.writeValueAsString(Map.of("parts", result.orderedParts()));
-                    conversation.messages().add(ChatMessage.of("assistant", content));
-                } catch (JsonProcessingException e) {
-                    conversation.messages().addAll(result.toolMessages());
-                    conversation.messages().add(ChatMessage.of("assistant", result.response()));
-                }
+                conversation.messages().add(ChatMessage.of("assistant", toPartsJson(result.orderedParts())));
             } else {
-                conversation.messages().addAll(result.toolMessages());
                 conversation.messages().add(ChatMessage.of("assistant", result.response()));
             }
             conversationRepository.save(conversation);
@@ -117,5 +113,13 @@ public class ConversationService {
 
     public void delete(String conversationId) {
         conversationRepository.deleteById(conversationId);
+    }
+
+    private static String toPartsJson(List<StreamChunk> orderedParts) {
+        try {
+            return OBJECT_MAPPER.writeValueAsString(Map.of("parts", orderedParts));
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException(e);
+        }
     }
 }

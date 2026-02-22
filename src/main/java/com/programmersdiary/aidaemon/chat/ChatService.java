@@ -16,7 +16,6 @@ import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatResponse;
-import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.model.StreamingChatModel;
 import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
@@ -77,10 +76,6 @@ public class ChatService {
         this.objectMapper = new ObjectMapper();
     }
 
-    public ChatResult chat(String providerId, List<ChatMessage> messages) {
-        return chat(providerId, messages, null);
-    }
-
     public ChatResult streamAndCollect(String providerId, List<ChatMessage> messages) {
         return streamAndCollect(providerId, messages, null);
     }
@@ -89,99 +84,6 @@ public class ChatService {
         var resultRef = new AtomicReference<ChatResult>();
         stream(providerId, messages, conversationId, resultRef::set).blockLast();
         return resultRef.get();
-    }
-
-    public ChatResult chat(String providerId, List<ChatMessage> messages, String conversationId) {
-        var config = configRepository.findById(providerId)
-                .orElseThrow(() -> new IllegalArgumentException("Provider not found: " + providerId));
-
-        var filtered = messages.stream().filter(m -> !"tool".equals(m.role())).toList();
-        var toolLog = new ArrayList<ChatMessage>();
-        var loggingTools = new ArrayList<ToolCallback>();
-        Arrays.asList(ToolCallbacks.from(new ChatTools(skillsService, jobExecutor, providerId, filtered, charsContextWindow)))
-                .forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog)));
-        Arrays.asList(ToolCallbacks.from(new ShellTool(shellAccessService)))
-                .forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog)));
-        mcpService.getToolCallbacksByServer().forEach((serverName, callbacks) ->
-                callbacks.forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog, serverName))));
-
-        DelegationTools delegationTools = null;
-        if (delegationEnabled && conversationId != null) {
-            var conversation = conversationRepository.findById(conversationId).orElse(null);
-            delegationTools = new DelegationTools(conversationRepository, conversationId, providerId);
-            Arrays.asList(ToolCallbacks.from(delegationTools))
-                    .forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog)));
-        }
-
-        var chatModel = chatModelFactory.create(config, loggingTools);
-        var promptOptions = chatModelFactory.promptOptions(config, loggingTools);
-
-        try {
-            var response = chatModel.call(buildPrompt(messages, promptOptions));
-            var pendingIds = delegationTools != null
-                    ? delegationTools.getPendingSubConversationIds() : List.<String>of();
-            var results = response.getResults();
-            var reasoningBuilder = new StringBuilder();
-            var answerBuilder = new StringBuilder();
-            var parts = new ArrayList<StreamChunk>();
-            for (Generation generation : results) {
-                var output = generation.getOutput();
-                if (output == null) continue;
-                if (isReasoningOrThinkingGeneration(output)) {
-                    var r = output.getText();
-                    if (r != null && !r.isEmpty()) {
-                        if (reasoningBuilder.length() > 0) reasoningBuilder.append("\n");
-                        reasoningBuilder.append(r);
-                    } else {
-                        var rMeta = extractReasoning(output);
-                        if (rMeta != null && !rMeta.isEmpty()) {
-                            if (reasoningBuilder.length() > 0) reasoningBuilder.append("\n");
-                            reasoningBuilder.append(rMeta);
-                        }
-                    }
-                } else {
-                    var text = output.getText();
-                    if (text != null && !text.isEmpty()) {
-                        answerBuilder.append(text);
-                    }
-                }
-            }
-            String reasoning = reasoningBuilder.isEmpty() ? null : reasoningBuilder.toString();
-            String answer = answerBuilder.toString();
-            var partsWithReasoning = new ArrayList<StreamChunk>();
-            if (reasoning != null && !reasoning.isEmpty()) {
-                partsWithReasoning.add(new StreamChunk(StreamChunk.TYPE_REASONING, reasoning));
-            }
-            if (!answer.isEmpty()) {
-                partsWithReasoning.add(new StreamChunk(StreamChunk.TYPE_ANSWER, answer));
-            }
-            var orderedParts = partsWithReasoning.isEmpty() ? null : partsWithReasoning;
-            return new ChatResult(answer, toolLog, pendingIds, orderedParts, reasoning);
-        } catch (Exception e) {
-            return new ChatResult("[Error] " + e.getMessage(), toolLog, List.of());
-        }
-    }
-
-    private static boolean isReasoningOrThinkingGeneration(AssistantMessage output) {
-        var metadata = output.getMetadata();
-        if (metadata == null) return false;
-        if (metadata.containsKey("signature")) return true;
-        for (var key : REASONING_KEYS) {
-            if (metadata.containsKey(key)) return true;
-        }
-        return false;
-    }
-
-    private static String extractReasoning(AssistantMessage output) {
-        var metadata = output.getMetadata();
-        if (metadata == null) return null;
-        for (var key : REASONING_KEYS) {
-            var value = metadata.get(key);
-            if (value != null && !value.toString().isEmpty()) {
-                return value.toString();
-            }
-        }
-        return null;
     }
 
     public Flux<StreamChunk> stream(String providerId, List<ChatMessage> messages, String conversationId,
@@ -212,9 +114,9 @@ public class ChatService {
         var chatModel = chatModelFactory.create(config, loggingTools);
         var promptOptions = chatModelFactory.promptOptions(config, loggingTools);
         if (!(chatModel instanceof StreamingChatModel streamingModel)) {
-            var result = chat(providerId, messages, conversationId);
-            onComplete.accept(result);
-            return Flux.just(new StreamChunk(StreamChunk.TYPE_ANSWER, result.response()));
+            var error = "Provider does not support streaming; only streaming models are supported.";
+            onComplete.accept(new ChatResult("[Error] " + error, toolLog, List.of()));
+            return Flux.just(new StreamChunk(StreamChunk.TYPE_ANSWER, "[Error] " + error));
         }
 
         final StringBuilder contentAccum = new StringBuilder();

@@ -18,7 +18,7 @@ public class ChatController {
 
     @PostMapping("/{providerId}")
     public Map<String, String> chat(@PathVariable String providerId, @RequestBody ChatRequest request) {
-        var result = chatService.chat(providerId, request.messages());
+        var result = chatService.streamAndCollect(providerId, request.messages());
         return Map.of("response", result.response());
     }
 }
