@@ -94,10 +94,8 @@ public class DelegationService {
 
             log.info("Waking up parent '{}' ({}), all subs complete: {}", parent.name(), parentId, allComplete);
 
-            parent.messages().add(ChatMessage.of("user", buildStatusMessage(subs, allComplete)));
-
             var result = chatServiceProvider.getObject()
-                    .streamAndCollect(parent.providerId(), parent.messages(), parentId);
+                    .streamAndCollect(parent.providerId(), parent.messages(), parentId, buildStatusMessage(subs, allComplete));
             addAssistantResult(parent.messages(), result);
             conversationRepository.save(parent);
 
