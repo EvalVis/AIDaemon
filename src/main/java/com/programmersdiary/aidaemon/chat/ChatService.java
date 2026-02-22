@@ -17,6 +17,7 @@ import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.StreamingChatModel;
+import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
@@ -101,9 +102,10 @@ public class ChatService {
         }
 
         var chatModel = chatModelFactory.create(config, loggingTools);
+        var promptOptions = chatModelFactory.promptOptions(config, loggingTools);
 
         try {
-            var response = chatModel.call(buildPrompt(messages));
+            var response = chatModel.call(buildPrompt(messages, promptOptions));
             var pendingIds = delegationTools != null
                     ? delegationTools.getPendingSubConversationIds() : List.<String>of();
             var result = response.getResult();
@@ -165,6 +167,7 @@ public class ChatService {
         }
 
         var chatModel = chatModelFactory.create(config, loggingTools);
+        var promptOptions = chatModelFactory.promptOptions(config, loggingTools);
         if (!(chatModel instanceof StreamingChatModel streamingModel)) {
             var result = chat(providerId, messages, conversationId);
             onComplete.accept(result);
@@ -175,7 +178,7 @@ public class ChatService {
         final StringBuilder reasoningAccum = new StringBuilder();
         final var orderedChunks = new ArrayList<StreamChunk>();
 
-        var contentStream = streamingModel.stream(buildPrompt(messages))
+        var contentStream = streamingModel.stream(buildPrompt(messages, promptOptions))
                 .flatMap(response -> {
                     var c = toStreamChunk(response);
                     return c != null ? Flux.just(c) : Flux.empty();
@@ -268,7 +271,7 @@ public class ChatService {
         return Map.of("cache_control", Map.of("type", "ephemeral"));
     }
 
-    private Prompt buildPrompt(List<ChatMessage> messages) {
+    private Prompt buildPrompt(List<ChatMessage> messages, ChatOptions promptOptions) {
         var springMessages = new ArrayList<Message>();
         springMessages
         .add(SystemMessage.builder().text(systemInstructions)
@@ -284,7 +287,9 @@ public class ChatService {
             springMessages.addAll(conversationHistory(history));
         }
         springMessages.add(toNotCachedSpringMessage(filtered.getLast()));
-        return new Prompt(springMessages);
+        return promptOptions != null
+                ? new Prompt(springMessages, promptOptions)
+                : new Prompt(springMessages);
     }
 
     private List<Message> memoryMessages() {

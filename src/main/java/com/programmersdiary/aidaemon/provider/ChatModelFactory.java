@@ -6,6 +6,7 @@ import org.springframework.ai.anthropic.api.AnthropicApi;
 import org.springframework.ai.anthropic.api.AnthropicCacheOptions;
 import org.springframework.ai.anthropic.api.AnthropicCacheStrategy;
 import org.springframework.ai.anthropic.api.AnthropicCacheTtl;
+import com.programmersdiary.aidaemon.provider.ProviderType;
 import org.springframework.ai.chat.messages.MessageType;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.ollama.OllamaChatModel;
@@ -14,6 +15,7 @@ import org.springframework.ai.ollama.api.OllamaChatOptions;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.openai.api.OpenAiApi;
+import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.stereotype.Component;
 
@@ -29,6 +31,12 @@ public class ChatModelFactory {
             case OLLAMA -> createOllama(config, tools);
             case GEMINI -> createGemini(config, tools);
         };
+    }
+
+    public ChatOptions promptOptions(ProviderConfig config, List<ToolCallback> tools) {
+        return config.type() == ProviderType.ANTHROPIC
+                ? buildAnthropicOptions(config, tools)
+                : null;
     }
 
     private ChatModel createOpenAi(ProviderConfig config, List<ToolCallback> tools) {
@@ -52,7 +60,14 @@ public class ChatModelFactory {
         var api = AnthropicApi.builder()
                 .apiKey(config.apiKey())
                 .build();
-        var options = AnthropicChatOptions.builder()
+        return AnthropicChatModel.builder()
+                .anthropicApi(api)
+                .defaultOptions(buildAnthropicOptions(config, tools))
+                .build();
+    }
+
+    private AnthropicChatOptions buildAnthropicOptions(ProviderConfig config, List<ToolCallback> tools) {
+        return AnthropicChatOptions.builder()
                 .model(config.model() != null ? config.model() : "claude-sonnet-4-20250514")
                 .maxTokens(4096)
                 .toolCallbacks(tools)
@@ -60,10 +75,6 @@ public class ChatModelFactory {
                         .strategy(AnthropicCacheStrategy.CONVERSATION_HISTORY)
                         .messageTypeTtl(MessageType.SYSTEM, AnthropicCacheTtl.ONE_HOUR)
                         .build())
-                .build();
-        return AnthropicChatModel.builder()
-                .anthropicApi(api)
-                .defaultOptions(options)
                 .build();
     }
 
