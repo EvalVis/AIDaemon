@@ -100,15 +100,8 @@ public class ChatService {
 
         var chatModel = chatModelFactory.create(config, loggingTools);
 
-        var springMessages = new ArrayList<Message>();
-        springMessages.add(new SystemMessage(buildSystemContext()));
-        springMessages.addAll(messages.stream()
-                .filter(m -> !"tool".equals(m.role()))
-                .map(this::toSpringMessage)
-                .toList());
-
         try {
-            var response = chatModel.call(new Prompt(springMessages));
+            var response = chatModel.call(buildPrompt(messages));
             var pendingIds = delegationTools != null
                     ? delegationTools.getPendingSubConversationIds() : List.<String>of();
             var result = response.getResult();
@@ -176,19 +169,11 @@ public class ChatService {
             return Flux.just(new StreamChunk(StreamChunk.TYPE_ANSWER, result.response()));
         }
 
-        var springMessages = new ArrayList<Message>();
-        springMessages.add(new SystemMessage(buildSystemContext()));
-        springMessages.add(new SystemMessage("You are given some previous conversation below. Your chatting partner might refer to something in it."));
-        springMessages.addAll(messages.stream()
-                .filter(m -> !"tool".equals(m.role()))
-                .map(this::toSpringMessage)
-                .toList());
-
         final StringBuilder contentAccum = new StringBuilder();
         final StringBuilder reasoningAccum = new StringBuilder();
         final var orderedChunks = new ArrayList<StreamChunk>();
 
-        var contentStream = streamingModel.stream(new Prompt(springMessages))
+        var contentStream = streamingModel.stream(buildPrompt(messages))
                 .flatMap(response -> {
                     var c = toStreamChunk(response);
                     return c != null ? Flux.just(c) : Flux.empty();
@@ -275,6 +260,16 @@ public class ChatService {
         }
         var text = output.getText();
         return new StreamChunk(StreamChunk.TYPE_ANSWER, text != null ? text : "");
+    }
+
+    private Prompt buildPrompt(List<ChatMessage> messages) {
+        var springMessages = new ArrayList<Message>();
+        springMessages.add(new SystemMessage(buildSystemContext()));
+        springMessages.addAll(messages.stream()
+                .filter(m -> !"tool".equals(m.role()))
+                .map(this::toSpringMessage)
+                .toList());
+        return new Prompt(springMessages);
     }
 
     private String buildSystemContext() {
