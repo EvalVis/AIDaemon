@@ -86,12 +86,7 @@ public class ConversationService {
         return chatService.stream(conversation.providerId(), conversation.messages(), conversationId, result -> {
             if (result.orderedParts() != null && !result.orderedParts().isEmpty()) {
                 try {
-                    var parts = new ArrayList<StreamChunk>();
-                    if (result.reasoning() != null && !result.reasoning().isEmpty()) {
-                        parts.add(new StreamChunk(StreamChunk.TYPE_REASONING, result.reasoning()));
-                    }
-                    parts.addAll(result.orderedParts());
-                    var content = OBJECT_MAPPER.writeValueAsString(Map.of("parts", parts));
+                    var content = OBJECT_MAPPER.writeValueAsString(Map.of("parts", result.orderedParts()));
                     conversation.messages().add(ChatMessage.of("assistant", content));
                 } catch (JsonProcessingException e) {
                     conversation.messages().addAll(result.toolMessages());
