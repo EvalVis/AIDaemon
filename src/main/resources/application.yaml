@@ -10,6 +10,7 @@ aidaemon:
   shell-access: false
   delegation-enabled: false
   delegation-threshold-seconds: 30
+  chars-context-window: 0
   config-dir: ${user.home}/.aidaemon
   system-instructions: |
     Use the saveMemory tool when the user asks you to remember something.

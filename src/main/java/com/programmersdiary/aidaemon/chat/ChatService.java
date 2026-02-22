@@ -48,6 +48,7 @@ public class ChatService {
     private final ConversationRepository conversationRepository;
     private final String systemInstructions;
     private final boolean delegationEnabled;
+    private final int charsContextWindow;
     private final ObjectMapper objectMapper;
 
     public ChatService(ProviderConfigRepository configRepository,
@@ -59,7 +60,8 @@ public class ChatService {
                        ConversationRepository conversationRepository,
                        @Value("${aidaemon.system-instructions:}") String systemInstructions,
                        @Value("${aidaemon.delegation-enabled:false}") boolean delegationEnabled,
-                       @Value("${aidaemon.delegation-threshold-seconds:30}") int delegationThresholdSeconds) {
+                       @Value("${aidaemon.delegation-threshold-seconds:30}") int delegationThresholdSeconds,
+                       @Value("${aidaemon.chars-context-window:0}") int charsContextWindow) {
         this.configRepository = configRepository;
         this.chatModelFactory = chatModelFactory;
         this.skillsService = skillsService;
@@ -70,6 +72,7 @@ public class ChatService {
         this.systemInstructions = systemInstructions
                 .replace("{threshold}", String.valueOf(delegationThresholdSeconds));
         this.delegationEnabled = delegationEnabled;
+        this.charsContextWindow = charsContextWindow;
         this.objectMapper = new ObjectMapper();
     }
 
@@ -312,10 +315,29 @@ public class ChatService {
     }
 
     private List<Message> conversationHistory(List<ChatMessage> history) {
+        var trimmed = trimToContextWindow(history, charsContextWindow);
         var result = new ArrayList<Message>();
-        history.forEach(m -> result.add(toNotCachedSpringMessage(m)));
-        result.add(toCachedSpringMessage(history.getLast()));
+        if (!trimmed.isEmpty()) {
+            trimmed.forEach(m -> result.add(toNotCachedSpringMessage(m)));
+            result.add(toCachedSpringMessage(trimmed.getLast()));
+        }
         return result;
+    }
+
+    private static List<ChatMessage> trimToContextWindow(List<ChatMessage> history, int limit) {
+        int total = 0;
+        int start = history.size();
+        for (int i = history.size() - 1; i >= 0; i--) {
+            int len = (history.get(i).content() != null)
+                ? history.get(i).content().length()
+                : 0;
+            if (total + len > limit) {
+                break;
+            }
+            total += len;
+            start = i;
+        }
+        return history.subList(start, history.size());
     }
 
     private Message toNotCachedSpringMessage(ChatMessage message) {
