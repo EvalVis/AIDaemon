@@ -44,6 +44,7 @@ public class ChatService {
     private final ConversationRepository conversationRepository;
     private final String systemInstructions;
     private final boolean delegationEnabled;
+    private final ObjectMapper objectMapper;
 
     public ChatService(ProviderConfigRepository configRepository,
                        ChatModelFactory chatModelFactory,
@@ -65,6 +66,7 @@ public class ChatService {
         this.systemInstructions = systemInstructions
                 .replace("{threshold}", String.valueOf(delegationThresholdSeconds));
         this.delegationEnabled = delegationEnabled;
+        this.objectMapper = new ObjectMapper();
     }
 
     public ChatResult chat(String providerId, List<ChatMessage> messages) {
@@ -278,8 +280,6 @@ public class ChatService {
         return new Prompt(springMessages);
     }
 
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-
     private Message toSpringMessage(ChatMessage message) {
         return switch (message.role()) {
             case "system" -> new SystemMessage(message.content());
@@ -294,7 +294,7 @@ public class ChatService {
         }
         try {
             @SuppressWarnings("unchecked")
-            var map = OBJECT_MAPPER.readValue(content, Map.class);
+            var map = objectMapper.readValue(content, Map.class);
             var parts = (List<?>) map.get("parts");
             if (parts == null) return content;
             var sb = new StringBuilder();
