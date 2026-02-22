@@ -16,6 +16,7 @@ import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.model.StreamingChatModel;
 import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
@@ -81,8 +82,12 @@ public class ChatService {
     }
 
     public ChatResult streamAndCollect(String providerId, List<ChatMessage> messages) {
+        return streamAndCollect(providerId, messages, null);
+    }
+
+    public ChatResult streamAndCollect(String providerId, List<ChatMessage> messages, String conversationId) {
         var resultRef = new AtomicReference<ChatResult>();
-        stream(providerId, messages, null, resultRef::set).blockLast();
+        stream(providerId, messages, conversationId, resultRef::set).blockLast();
         return resultRef.get();
     }
 
@@ -115,26 +120,56 @@ public class ChatService {
             var response = chatModel.call(buildPrompt(messages, promptOptions));
             var pendingIds = delegationTools != null
                     ? delegationTools.getPendingSubConversationIds() : List.<String>of();
-            var result = response.getResult();
-            var output = result != null ? result.getOutput() : null;
-            var text = output != null ? output.getText() : null;
-            var responseText = text != null ? text : "";
-            String reasoning = null;
+            var results = response.getResults();
+            var reasoningBuilder = new StringBuilder();
+            var answerBuilder = new StringBuilder();
             var parts = new ArrayList<StreamChunk>();
-            if (output != null) {
-                reasoning = extractReasoning(output);
-                if (reasoning != null && !reasoning.isEmpty()) {
-                    parts.add(new StreamChunk(StreamChunk.TYPE_REASONING, reasoning));
-                }
-                if (!responseText.isEmpty()) {
-                    parts.add(new StreamChunk(StreamChunk.TYPE_ANSWER, responseText));
+            for (Generation generation : results) {
+                var output = generation.getOutput();
+                if (output == null) continue;
+                if (isReasoningOrThinkingGeneration(output)) {
+                    var r = output.getText();
+                    if (r != null && !r.isEmpty()) {
+                        if (reasoningBuilder.length() > 0) reasoningBuilder.append("\n");
+                        reasoningBuilder.append(r);
+                    } else {
+                        var rMeta = extractReasoning(output);
+                        if (rMeta != null && !rMeta.isEmpty()) {
+                            if (reasoningBuilder.length() > 0) reasoningBuilder.append("\n");
+                            reasoningBuilder.append(rMeta);
+                        }
+                    }
+                } else {
+                    var text = output.getText();
+                    if (text != null && !text.isEmpty()) {
+                        answerBuilder.append(text);
+                    }
                 }
             }
-            var orderedParts = parts.isEmpty() ? null : parts;
-            return new ChatResult(responseText, toolLog, pendingIds, orderedParts, reasoning);
+            String reasoning = reasoningBuilder.isEmpty() ? null : reasoningBuilder.toString();
+            String answer = answerBuilder.toString();
+            var partsWithReasoning = new ArrayList<StreamChunk>();
+            if (reasoning != null && !reasoning.isEmpty()) {
+                partsWithReasoning.add(new StreamChunk(StreamChunk.TYPE_REASONING, reasoning));
+            }
+            if (!answer.isEmpty()) {
+                partsWithReasoning.add(new StreamChunk(StreamChunk.TYPE_ANSWER, answer));
+            }
+            var orderedParts = partsWithReasoning.isEmpty() ? null : partsWithReasoning;
+            return new ChatResult(answer, toolLog, pendingIds, orderedParts, reasoning);
         } catch (Exception e) {
             return new ChatResult("[Error] " + e.getMessage(), toolLog, List.of());
         }
+    }
+
+    private static boolean isReasoningOrThinkingGeneration(AssistantMessage output) {
+        var metadata = output.getMetadata();
+        if (metadata == null) return false;
+        if (metadata.containsKey("signature")) return true;
+        for (var key : REASONING_KEYS) {
+            if (metadata.containsKey(key)) return true;
+        }
+        return false;
     }
 
     private static String extractReasoning(AssistantMessage output) {

@@ -48,7 +48,7 @@ public class DelegationService {
             log.info("Executing sub-agent for '{}' ({})", sub.name(), subConversationId);
 
             var result = chatServiceProvider.getObject()
-                    .chat(sub.providerId(), sub.messages(), subConversationId);
+                    .streamAndCollect(sub.providerId(), sub.messages(), subConversationId);
             sub.messages().addAll(result.toolMessages());
             sub.messages().add(ChatMessage.of("assistant", result.response()));
             conversationRepository.save(sub);
