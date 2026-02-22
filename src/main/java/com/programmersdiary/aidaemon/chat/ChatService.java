@@ -264,24 +264,18 @@ public class ChatService {
 
     private Prompt buildPrompt(List<ChatMessage> messages) {
         var springMessages = new ArrayList<Message>();
-        springMessages.add(new SystemMessage(buildSystemContext()));
+        springMessages.add(new SystemMessage(systemInstructions));
         springMessages.addAll(messages.stream()
                 .filter(m -> !"tool".equals(m.role()))
                 .map(this::toSpringMessage)
                 .toList());
-        return new Prompt(springMessages);
-    }
-
-    private String buildSystemContext() {
-        var sb = new StringBuilder();
-        sb.append(systemInstructions);
         var memory = skillsService.readMemory();
         if (!memory.isEmpty()) {
-            sb.append("Here is your memory:\n");
-            memory.forEach((k, v) -> sb.append("- ").append(k).append(": ").append(v).append("\n"));
-            sb.append("\n");
+            var memoryText = new StringBuilder("Here is your memory:\n");
+            memory.forEach((k, v) -> memoryText.append("- ").append(k).append(": ").append(v).append("\n"));
+            springMessages.add(new UserMessage(memoryText.toString()));
         }
-        return sb.toString();
+        return new Prompt(springMessages);
     }
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
