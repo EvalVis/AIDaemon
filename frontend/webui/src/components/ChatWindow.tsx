@@ -10,6 +10,8 @@ interface ChatWindowProps {
   sending: boolean;
   streaming: StreamingContent | null;
   lastStreamedContent: { reasoning: string; parts: StreamPart[] } | null;
+  inputDraft: string;
+  onInputDraftChange: (value: string) => void;
   onSend: (message: string) => void;
   onUpdateProvider: (conversationId: string, providerId: string | null) => void;
 }
@@ -137,8 +139,7 @@ function getDisplayMessages(
   return list;
 }
 
-export default function ChatWindow({ conversation, providers, sending, streaming, lastStreamedContent, onSend, onUpdateProvider }: ChatWindowProps) {
-  const [input, setInput] = useState('');
+export default function ChatWindow({ conversation, providers, sending, streaming, lastStreamedContent, inputDraft, onInputDraftChange, onSend, onUpdateProvider }: ChatWindowProps) {
   const [hideTools, setHideTools] = useState(false);
   const messagesRef = useRef<HTMLDivElement>(null);
   const topRef = useRef<HTMLDivElement>(null);
@@ -154,9 +155,8 @@ export default function ChatWindow({ conversation, providers, sending, streaming
 
   const hasProvider = Boolean(conversation?.providerId);
   const handleSend = () => {
-    const trimmed = input.trim();
+    const trimmed = inputDraft.trim();
     if (!trimmed || sending || !hasProvider) return;
-    setInput('');
     onSend(trimmed);
   };
 
@@ -256,8 +256,8 @@ export default function ChatWindow({ conversation, providers, sending, streaming
           </button>
         </div>
         <textarea
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
+          value={inputDraft}
+          onChange={(e) => onInputDraftChange(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
@@ -286,7 +286,7 @@ export default function ChatWindow({ conversation, providers, sending, streaming
           <button
             className="py-2.5 px-5 bg-accent text-white border-0 rounded-lg cursor-pointer text-sm font-medium transition-colors duration-150 w-full hover:bg-accent-hover disabled:opacity-40 disabled:cursor-not-allowed"
             onClick={handleSend}
-            disabled={sending || !hasProvider || !input.trim()}
+            disabled={sending || !hasProvider || !inputDraft.trim()}
           >
             Send
           </button>

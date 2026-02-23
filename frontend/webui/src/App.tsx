@@ -21,12 +21,17 @@ export default function App() {
   const [sending, setSending] = useState(false);
   const [streaming, setStreaming] = useState<StreamingContent | null>(null);
   const [lastStreamedContent, setLastStreamedContent] = useState<{ conversationId: string; reasoning: string; parts: StreamPart[] } | null>(null);
-  const [chatRefreshKey, setChatRefreshKey] = useState(0);
+  const [, setDraftVersion] = useState(0);
+  const inputDraftRef = useRef('');
   const streamingRef = useRef<StreamingContent | null>(null);
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const activeIdRef = useRef(activeId);
-  const lastSeenMessageCountRef = useRef(0);
   activeIdRef.current = activeId;
+
+  const setInputDraft = (value: string) => {
+    inputDraftRef.current = value;
+    setDraftVersion((v) => v + 1);
+  };
 
   useEffect(() => {
     api.fetchProviders().then(setProviders);
@@ -40,11 +45,6 @@ export default function App() {
   }, []);
 
   const activeConversation = conversations.find((c) => c.id === activeId) ?? null;
-
-  useEffect(() => {
-    if (activeConversation)
-      lastSeenMessageCountRef.current = activeConversation.messages.length;
-  }, [activeId, activeConversation?.messages.length]);
 
   const handleAddProvider = async (req: CreateProviderRequest) => {
     const created = await api.createProvider(req);
@@ -76,6 +76,8 @@ export default function App() {
 
   const handleSend = async (message: string) => {
     if (!activeId) return;
+    inputDraftRef.current = '';
+    setDraftVersion((v) => v + 1);
     if (pollIntervalRef.current) {
       clearInterval(pollIntervalRef.current);
       pollIntervalRef.current = null;
@@ -128,14 +130,7 @@ export default function App() {
         setStreaming(null);
         streamingRef.current = null;
         const poll = () => {
-          api.fetchConversations().then((list) => {
-            setConversations([...list]);
-            const active = list.find((c) => c.id === activeIdRef.current);
-            if (active && active.messages.length > lastSeenMessageCountRef.current) {
-              lastSeenMessageCountRef.current = active.messages.length;
-              setChatRefreshKey((k) => k + 1);
-            }
-          });
+          api.fetchConversations().then((list) => setConversations([...list]));
         };
         poll();
         pollIntervalRef.current = setInterval(poll, 2500);
@@ -167,12 +162,14 @@ export default function App() {
         onAddProvider={handleAddProvider}
       />
       <ChatWindow
-        key={`${activeId ?? ''}-${chatRefreshKey}`}
+        key={activeId ?? ''}
         conversation={activeConversation}
         providers={providers}
         sending={sending}
         streaming={streaming}
         lastStreamedContent={activeId && lastStreamedContent?.conversationId === activeId ? lastStreamedContent : null}
+        inputDraft={inputDraftRef.current}
+        onInputDraftChange={setInputDraft}
         onSend={handleSend}
         onUpdateProvider={handleUpdateConversationProvider}
       />
