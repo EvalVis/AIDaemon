@@ -114,15 +114,24 @@ function parseStructuredContent(content: string): StreamPart[] | null {
   }
 }
 
+function filterParts(parts: StreamPart[], hideToolsAndThinking: boolean): StreamPart[] {
+  if (!hideToolsAndThinking) return parts;
+  const answerParts = parts.filter((p) => p.type === 'answer');
+  return answerParts.map((p, i, arr) => ({
+    ...p,
+    content: p.content + (i < arr.length - 1 ? '\n\n' : ''),
+  }));
+}
+
 function getDisplayMessages(
   messages: ChatMessage[],
-  hideTools: boolean,
+  hideToolsAndThinking: boolean,
   lastStreamedContent: { reasoning: string; parts: StreamPart[] } | null
 ): DisplayMessage[] {
-  let list: DisplayMessage[] = (hideTools ? messages.filter((m) => m.role !== 'tool') : messages).map((msg) => {
+  let list: DisplayMessage[] = messages.map((msg) => {
     if (msg.role === 'assistant') {
       const parts = parseStructuredContent(msg.content);
-      if (parts) return { role: 'assistant' as const, parts };
+      if (parts) return { role: 'assistant' as const, parts: filterParts(parts, hideToolsAndThinking) };
     }
     return msg;
   });
@@ -133,20 +142,20 @@ function getDisplayMessages(
       const parts: StreamPart[] = lastStreamedContent.reasoning
         ? [{ type: 'reasoning', content: lastStreamedContent.reasoning }, ...lastStreamedContent.parts]
         : lastStreamedContent.parts;
-      list = [...list.slice(0, lastUserIdx + 1), { role: 'assistant', parts }];
+      list = [...list.slice(0, lastUserIdx + 1), { role: 'assistant', parts: filterParts(parts, hideToolsAndThinking) }];
     }
   }
   return list;
 }
 
 export default function ChatWindow({ conversation, providers, sending, streaming, lastStreamedContent, inputDraft, onInputDraftChange, onSend, onUpdateProvider }: ChatWindowProps) {
-  const [hideTools, setHideTools] = useState(false);
+  const [hideToolsAndThinking, setHideToolsAndThinking] = useState(false);
   const messagesRef = useRef<HTMLDivElement>(null);
   const topRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const visibleMessages = conversation
-    ? getDisplayMessages(conversation.messages, hideTools, lastStreamedContent)
+    ? getDisplayMessages(conversation.messages, hideToolsAndThinking, lastStreamedContent)
     : [];
 
   useEffect(() => {
@@ -177,14 +186,14 @@ export default function ChatWindow({ conversation, providers, sending, streaming
         <h2 className="flex-1 min-w-0 text-base font-semibold text-text-bright truncate">{conversation.name}</h2>
         <button
           className={`py-1 px-3 border rounded-lg cursor-pointer text-xs transition-all duration-150 whitespace-nowrap ${
-            hideTools
+            hideToolsAndThinking
               ? 'bg-bg-active border-accent text-accent'
               : 'bg-bg-input text-text-dim border-border hover:border-accent hover:text-text-bright'
           }`}
-          onClick={() => setHideTools((v) => !v)}
-          title={hideTools ? 'Show tool logs' : 'Hide tool logs'}
+          onClick={() => setHideToolsAndThinking((v) => !v)}
+          title={hideToolsAndThinking ? 'Show tools and thinking' : 'Hide tools and thinking'}
         >
-          {hideTools ? 'Show Tools' : 'Hide Tools'}
+          {hideToolsAndThinking ? 'Show tools and thinking' : 'Hide tools and thinking'}
         </button>
       </header>
 
