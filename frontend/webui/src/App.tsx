@@ -21,14 +21,30 @@ export default function App() {
   const [sending, setSending] = useState(false);
   const [streaming, setStreaming] = useState<StreamingContent | null>(null);
   const [lastStreamedContent, setLastStreamedContent] = useState<{ conversationId: string; reasoning: string; parts: StreamPart[] } | null>(null);
+  const [chatRefreshKey, setChatRefreshKey] = useState(0);
   const streamingRef = useRef<StreamingContent | null>(null);
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const activeIdRef = useRef(activeId);
+  const lastSeenMessageCountRef = useRef(0);
+  activeIdRef.current = activeId;
 
   useEffect(() => {
     api.fetchProviders().then(setProviders);
     api.fetchConversations().then(setConversations);
   }, []);
 
+  useEffect(() => {
+    return () => {
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+    };
+  }, []);
+
   const activeConversation = conversations.find((c) => c.id === activeId) ?? null;
+
+  useEffect(() => {
+    if (activeConversation)
+      lastSeenMessageCountRef.current = activeConversation.messages.length;
+  }, [activeId, activeConversation?.messages.length]);
 
   const handleAddProvider = async (req: CreateProviderRequest) => {
     const created = await api.createProvider(req);
@@ -60,6 +76,10 @@ export default function App() {
 
   const handleSend = async (message: string) => {
     if (!activeId) return;
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
+    }
     setLastStreamedContent(null);
     setConversations((prev) =>
       prev.map((c) =>
@@ -107,18 +127,30 @@ export default function App() {
         setSending(false);
         setStreaming(null);
         streamingRef.current = null;
-        api.fetchConversations().then(setConversations);
+        const poll = () => {
+          api.fetchConversations().then((list) => {
+            setConversations([...list]);
+            const active = list.find((c) => c.id === activeIdRef.current);
+            if (active && active.messages.length > lastSeenMessageCountRef.current) {
+              lastSeenMessageCountRef.current = active.messages.length;
+              setChatRefreshKey((k) => k + 1);
+            }
+          });
+        };
+        poll();
+        pollIntervalRef.current = setInterval(poll, 2500);
+        setTimeout(() => {
+          if (pollIntervalRef.current) {
+            clearInterval(pollIntervalRef.current);
+            pollIntervalRef.current = null;
+          }
+        }, 60000);
       },
       () => {
         setSending(false);
         setStreaming(null);
-        setConversations((prev) =>
-          prev.map((c) =>
-            c.id === activeId
-              ? { ...c, messages: [...c.messages, { role: 'assistant', content: 'Error: request failed', timestampMillis: Date.now() }] }
-              : c,
-          ),
-        );
+        streamingRef.current = null;
+        api.fetchConversations().then(setConversations);
       }
     );
   };
@@ -135,6 +167,7 @@ export default function App() {
         onAddProvider={handleAddProvider}
       />
       <ChatWindow
+        key={`${activeId ?? ''}-${chatRefreshKey}`}
         conversation={activeConversation}
         providers={providers}
         sending={sending}

@@ -124,12 +124,15 @@ function getDisplayMessages(
     }
     return msg;
   });
-  if (lastStreamedContent && list.length > 0 && list[list.length - 1].role === 'assistant') {
+  if (lastStreamedContent && list.length > 0) {
     const lastUserIdx = Math.max(...list.map((msg, i) => (msg.role === 'user' ? i : -1)));
-    const parts: StreamPart[] = lastStreamedContent.reasoning
-      ? [{ type: 'reasoning', content: lastStreamedContent.reasoning }, ...lastStreamedContent.parts]
-      : lastStreamedContent.parts;
-    list = [...list.slice(0, lastUserIdx + 1), { role: 'assistant', parts }];
+    const afterLastUser = list.slice(lastUserIdx + 1);
+    if (afterLastUser.length === 1 && afterLastUser[0].role === 'assistant') {
+      const parts: StreamPart[] = lastStreamedContent.reasoning
+        ? [{ type: 'reasoning', content: lastStreamedContent.reasoning }, ...lastStreamedContent.parts]
+        : lastStreamedContent.parts;
+      list = [...list.slice(0, lastUserIdx + 1), { role: 'assistant', parts }];
+    }
   }
   return list;
 }
