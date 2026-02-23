@@ -81,23 +81,13 @@ public class ChatService {
     }
 
     public ChatResult streamAndCollect(String providerId, List<ChatMessage> messages, String conversationId) {
-        return streamAndCollect(providerId, messages, conversationId, null);
-    }
-
-    public ChatResult streamAndCollect(String providerId, List<ChatMessage> messages, String conversationId,
-                                      String extraSystemMessage) {
         var resultRef = new AtomicReference<ChatResult>();
-        stream(providerId, messages, conversationId, resultRef::set, extraSystemMessage).blockLast();
+        stream(providerId, messages, conversationId, resultRef::set).blockLast();
         return resultRef.get();
     }
 
     public Flux<StreamChunk> stream(String providerId, List<ChatMessage> messages, String conversationId,
                                    Consumer<ChatResult> onComplete) {
-        return stream(providerId, messages, conversationId, onComplete, null);
-    }
-
-    public Flux<StreamChunk> stream(String providerId, List<ChatMessage> messages, String conversationId,
-                                   Consumer<ChatResult> onComplete, String extraSystemMessage) {
         var config = configRepository.findById(providerId)
                 .orElseThrow(() -> new IllegalArgumentException("Provider not found: " + providerId));
 
@@ -133,7 +123,7 @@ public class ChatService {
         final StringBuilder reasoningAccum = new StringBuilder();
         final var orderedChunks = new ArrayList<StreamChunk>();
 
-        var contentStream = streamingModel.stream(buildPrompt(messages, promptOptions, extraSystemMessage))
+        var contentStream = streamingModel.stream(buildPrompt(messages, promptOptions))
                 .flatMap(response -> {
                     var c = toStreamChunk(response);
                     return c != null ? Flux.just(c) : Flux.empty();
@@ -226,7 +216,7 @@ public class ChatService {
         return Map.of("cache_control", Map.of("type", "ephemeral"));
     }
 
-    private Prompt buildPrompt(List<ChatMessage> messages, ChatOptions promptOptions, String extraSystemMessage) {
+    private Prompt buildPrompt(List<ChatMessage> messages, ChatOptions promptOptions) {
         var springMessages = new ArrayList<Message>();
         springMessages
         .add(SystemMessage.builder().text(systemInstructions)
@@ -246,9 +236,6 @@ public class ChatService {
                 + "Your current context includes messages from index " + firstInContext + " (inclusive) to the latest. "
                 + "Use retrieve_older_messages tool to fetch earlier messages if needed."));
             springMessages.addAll(conversationHistory(trimmed));
-        }
-        if (extraSystemMessage != null) {
-            springMessages.add(new SystemMessage(extraSystemMessage));
         }
         springMessages.add(toNotCachedSpringMessage(filtered.getLast()));
         return promptOptions != null

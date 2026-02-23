@@ -15,6 +15,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -94,8 +95,10 @@ public class DelegationService {
 
             log.info("Waking up parent '{}' ({}), all subs complete: {}", parent.name(), parentId, allComplete);
 
+            var messagesForCall = new ArrayList<>(parent.messages());
+            messagesForCall.add(ChatMessage.of("user", buildStatusMessage(subs, allComplete)));
             var result = chatServiceProvider.getObject()
-                    .streamAndCollect(parent.providerId(), parent.messages(), parentId, buildStatusMessage(subs, allComplete));
+                    .streamAndCollect(parent.providerId(), messagesForCall, parentId);
             addAssistantResult(parent.messages(), result);
             conversationRepository.save(parent);
 
@@ -134,8 +137,8 @@ public class DelegationService {
     }
 
     private String buildStatusMessage(List<Conversation> subs, boolean allComplete) {
-        var sb = new StringBuilder("[Delegation Status Update]\n");
-        sb.append("Your sub-agents have been working. Current status:\n\n");
+        var sb = new StringBuilder("Previously you have delegated requests to sub-agent(s).\n");
+        sb.append("Current status:\n\n");
 
         for (var sub : subs) {
             boolean complete = !sub.messages().isEmpty()
