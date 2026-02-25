@@ -8,6 +8,7 @@ import io.modelcontextprotocol.client.transport.HttpClientSseClientTransport;
 import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport;
 import io.modelcontextprotocol.client.transport.ServerParameters;
 import io.modelcontextprotocol.client.transport.StdioClientTransport;
+import io.modelcontextprotocol.client.transport.WebClientStreamableHttpTransport;
 import io.modelcontextprotocol.json.McpJsonMapper;
 import io.modelcontextprotocol.spec.McpClientTransport;
 import jakarta.annotation.PostConstruct;
@@ -17,8 +18,15 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
+import org.springframework.web.reactive.function.client.ClientResponse;
+import org.springframework.web.reactive.function.client.ExchangeFilterFunction;
+import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Mono;
 
+import java.net.URI;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
@@ -97,7 +105,8 @@ public class McpService {
     }
 
     private McpClientTransport createTransport(McpServerConfig config) {
-        return switch (config.type()) {
+        var type = config.type() != null ? config.type() : McpTransportType.LOCAL;
+        return switch (type) {
             case REMOTE -> createStreamableHttpTransport(config);
             case SSE -> createSseTransport(config);
             case LOCAL -> createStdioTransport(config);
@@ -105,12 +114,45 @@ public class McpService {
     }
 
     private McpClientTransport createStreamableHttpTransport(McpServerConfig config) {
+        if (config.url() != null && config.url().contains("smithery.ai")) {
+            return createSmitheryStreamableHttpTransport(config);
+        }
         var builder = HttpClientStreamableHttpTransport.builder(config.url())
                 .openConnectionOnStartup(false);
         if (config.headers() != null && !config.headers().isEmpty()) {
             builder.customizeRequest(req -> config.headers().forEach(req::header));
         }
         return builder.build();
+    }
+
+    private McpClientTransport createSmitheryStreamableHttpTransport(McpServerConfig config) {
+        URI uri = URI.create(config.url());
+        String baseUrl = uri.getScheme() + "://" + uri.getHost() + (uri.getPort() > 0 ? ":" + uri.getPort() : "");
+        String endpoint = (uri.getRawPath() != null && !uri.getRawPath().isEmpty()) ? uri.getRawPath() : "/mcp";
+        WebClient.Builder webClientBuilder = WebClient.builder()
+                .baseUrl(baseUrl)
+                .filter(acceptTextHtmlAsEmptyJson());
+        if (config.headers() != null && !config.headers().isEmpty()) {
+            config.headers().forEach(webClientBuilder::defaultHeader);
+        }
+        return WebClientStreamableHttpTransport.builder(webClientBuilder)
+                .endpoint(endpoint)
+                .build();
+    }
+
+    private static ExchangeFilterFunction acceptTextHtmlAsEmptyJson() {
+        return (request, next) -> next.exchange(request)
+                .flatMap(response -> {
+                    if (response.statusCode().is2xxSuccessful()
+                            && response.headers().contentType().isPresent()
+                            && response.headers().contentType().get().includes(MediaType.TEXT_HTML)) {
+                        return response.bodyToMono(Void.class)
+                                .then(Mono.fromCallable(() -> ClientResponse.create(HttpStatus.ACCEPTED)
+                                        .header("Content-Type", MediaType.APPLICATION_JSON_VALUE)
+                                        .build()));
+                    }
+                    return Mono.just(response);
+                });
     }
 
     private McpClientTransport createSseTransport(McpServerConfig config) {
@@ -171,6 +213,15 @@ public class McpService {
         try {
             objectMapper.writeValue(configFile.toFile(), config);
             connectClient(name, config);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    public void writeServerConfig(String name, McpServerConfig config) {
+        var configFile = mcpsDir.resolve(name + ".json");
+        try {
+            objectMapper.writeValue(configFile.toFile(), config);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }

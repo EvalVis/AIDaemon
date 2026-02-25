@@ -11,6 +11,7 @@ import com.programmersdiary.aidaemon.skills.ChatTools;
 import com.programmersdiary.aidaemon.skills.ShellAccessService;
 import com.programmersdiary.aidaemon.skills.ShellTool;
 import com.programmersdiary.aidaemon.skills.SkillsService;
+import com.programmersdiary.aidaemon.skills.SmitheryMcpTool;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
@@ -21,6 +22,7 @@ import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
@@ -50,6 +52,7 @@ public class ChatService {
     private final boolean delegationEnabled;
     private final int charsContextWindow;
     private final ObjectMapper objectMapper;
+    private final SmitheryMcpTool smitheryMcpTool;
 
     public ChatService(ProviderConfigRepository configRepository,
                        ChatModelFactory chatModelFactory,
@@ -58,6 +61,7 @@ public class ChatService {
                        ShellAccessService shellAccessService,
                        McpService mcpService,
                        ConversationRepository conversationRepository,
+                       @Autowired(required = false) SmitheryMcpTool smitheryMcpTool,
                        @Value("${aidaemon.system-instructions:}") String systemInstructions,
                        @Value("${aidaemon.delegation-enabled:false}") boolean delegationEnabled,
                        @Value("${aidaemon.delegation-threshold-seconds:30}") int delegationThresholdSeconds,
@@ -69,6 +73,7 @@ public class ChatService {
         this.shellAccessService = shellAccessService;
         this.mcpService = mcpService;
         this.conversationRepository = conversationRepository;
+        this.smitheryMcpTool = smitheryMcpTool;
         this.systemInstructions = systemInstructions
                 .replace("{threshold}", String.valueOf(delegationThresholdSeconds));
         this.delegationEnabled = delegationEnabled;
@@ -100,6 +105,10 @@ public class ChatService {
                 .forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog, null, onToolChunk)));
         Arrays.asList(ToolCallbacks.from(new ShellTool(shellAccessService)))
                 .forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog, null, onToolChunk)));
+        if (smitheryMcpTool != null) {
+            Arrays.asList(ToolCallbacks.from(smitheryMcpTool))
+                    .forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog, null, onToolChunk)));
+        }
         mcpService.getToolCallbacksByServer().forEach((serverName, callbacks) ->
                 callbacks.forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog, serverName, onToolChunk))));
 
