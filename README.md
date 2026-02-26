@@ -121,7 +121,7 @@ sequenceDiagram
 - **Context window** -- Optional `aidaemon.chars-context-window` (character limit) trims older messages so the prompt fits. The AI can use the `retrieveOlderMessages` tool to fetch older conversation content by index when context is trimmed.
 - **Persistent memory** -- AI can save and recall information across sessions via `memory.json`.
 - **Skills** -- Drop instruction files into `~/.aidaemon/skills/` or install from [Smithery](https://smithery.ai) via REST endpoint. The AI reads them for domain-specific context.
-- **MCP support** -- Connect remote (Streamable HTTP, SSE) and local (stdio) MCP servers. Drop JSON configs into `~/.aidaemon/mcps/` and reload.
+- **MCP support** -- Connect remote (Streamable HTTP, SSE) and local (stdio) MCP servers. Drop JSON configs into `~/.aidaemon/mcps/` and reload, or add [Smithery](https://smithery.ai)-hosted MCPs via chat (Notion, Google Calendar, etc.).
 - **Scheduled jobs** -- AI creates cron jobs (recurring or one-time) that autonomously execute instructions on schedule. AI can also list and cancel them.
 - **Shell access** -- Optionally allow the AI to execute host commands (git, docker, curl, etc.). Controlled by a global toggle endpoint.
 - **Web UI** -- React app in `frontend/webui/` for providers, conversations, and streaming chat with reasoning and tool visibility.
@@ -287,6 +287,36 @@ Create JSON config files in `~/.aidaemon/mcps/`.
 }
 ```
 
+### Adding MCP via Smithery
+
+You can connect [Smithery](https://smithery.ai)-hosted MCP servers (e.g. Notion, Google Calendar) without writing config files by hand.
+
+1. **Enable and configure Smithery MCP** in `application.yaml` or environment:
+
+   ```yaml
+   aidaemon:
+     smithery-mcp:
+       enabled: true
+       namespace: <your-smithery-namespace>
+       api-key: <your-smithery-api-key>
+   ```
+
+   Get your namespace and API key from the [Smithery dashboard](https://smithery.ai).
+
+2. **Find a server** on [smithery.ai/servers](https://smithery.ai/servers) and note its slug (e.g. `notion`, `googlecalendar`) or full URL (e.g. `https://smithery.ai/servers/notion`).
+
+3. **Add the MCP via chat:** In any conversation, ask the AI to add the server by slug or URL, for example:
+   - “Add the Notion MCP from Smithery”
+   - “Add Smithery MCP server googlecalendar”
+
+   The AI uses the `addSmitheryMcp` tool, writes the config to `~/.aidaemon/mcps/`, and connects the server.
+
+4. **OAuth:** If the server requires sign-in, the tool returns an authorization URL. Open it in your browser, complete sign-in, then reload MCPs:
+
+   ```bash
+   curl -X POST http://localhost:8080/api/mcps/reload
+   ```
+
 ```bash
 # List connected MCPs
 curl http://localhost:8080/api/mcps
@@ -375,6 +405,9 @@ Optional `application.yaml` / env properties:
 | Property | Default | Description |
 |----------|---------|-------------|
 | `aidaemon.config-dir` | `~/.aidaemon` | Data directory |
+| `aidaemon.smithery-mcp.enabled` | `false` | Enable adding MCP servers from Smithery via chat |
+| `aidaemon.smithery-mcp.namespace` | — | Smithery namespace (from dashboard) |
+| `aidaemon.smithery-mcp.api-key` | — | Smithery API key (from dashboard) |
 | `aidaemon.shell-access` | `false` | Allow AI shell execution |
 | `aidaemon.delegation-enabled` | `false` | Enable sub-agent delegation |
 | `aidaemon.delegation-threshold-seconds` | `30` | Estimated seconds above which the model should delegate |

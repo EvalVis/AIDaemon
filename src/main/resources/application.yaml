@@ -10,7 +10,7 @@ aidaemon:
   smithery-mcp:
     enabled: true
     api-key: ${SMITHERY_API_KEY}
-    namespace: ${SMITHERY_NAMESPACE:evalvis}
+    namespace: ${SMITHERY_NAMESPACE}
   shell-access: false
   delegation-enabled: false
   delegation-threshold-seconds: 30
