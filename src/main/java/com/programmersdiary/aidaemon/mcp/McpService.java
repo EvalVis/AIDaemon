@@ -1,9 +1,7 @@
 package com.programmersdiary.aidaemon.mcp;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.modelcontextprotocol.client.McpClient;
 import io.modelcontextprotocol.client.McpSyncClient;
 import io.modelcontextprotocol.client.transport.HttpClientSseClientTransport;
@@ -20,39 +18,18 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
-import org.springframework.core.io.buffer.DataBuffer;
-import org.springframework.core.io.buffer.DataBufferFactory;
-import org.springframework.core.io.buffer.DataBufferUtils;
-import org.springframework.http.client.reactive.ClientHttpRequest;
-import org.springframework.web.reactive.function.BodyInserter;
-import org.springframework.web.reactive.function.client.ClientRequest;
-import org.springframework.web.reactive.function.client.ClientResponse;
-import org.springframework.web.reactive.function.client.ExchangeFilterFunction;
 import org.springframework.web.reactive.function.client.WebClient;
-import org.springframework.http.HttpMethod;
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
-import reactor.util.context.Context;
 
-import java.lang.reflect.InvocationHandler;
-import java.lang.reflect.Method;
-import java.lang.reflect.Proxy;
-import java.net.URI;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
 
 @Service
 public class McpService {
@@ -149,188 +126,13 @@ public class McpService {
         String endpoint = (uri.getRawPath() != null && !uri.getRawPath().isEmpty()) ? uri.getRawPath() : "/mcp";
         WebClient.Builder webClientBuilder = WebClient.builder()
                 .baseUrl(baseUrl)
-                .filter(normalizeNonJson2xxToJsonWithRequestId());
+                .filter(SmitheryMcpFilter.filter());
         if (config.headers() != null && !config.headers().isEmpty()) {
             config.headers().forEach(webClientBuilder::defaultHeader);
         }
         return WebClientStreamableHttpTransport.builder(webClientBuilder)
                 .endpoint(endpoint)
                 .build();
-    }
-
-    private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
-
-    private static ExchangeFilterFunction normalizeNonJson2xxToJsonWithRequestId() {
-        return (request, next) -> {
-            AtomicReference<byte[]> requestBodyRef = new AtomicReference<>();
-            CountDownLatch bodySentLatch = new CountDownLatch(1);
-            ClientRequest capturingRequest = wrapRequestWithBodyCapture(request, requestBodyRef, bodySentLatch);
-            return next.exchange(capturingRequest)
-                    .single()
-                    .flatMap(response -> {
-                        if (request.method() != HttpMethod.POST) {
-                            return Mono.just(response);
-                        }
-                        if (!response.statusCode().is2xxSuccessful()) {
-                            return Mono.just(response);
-                        }
-                        var status = response.statusCode();
-                        var contentType = response.headers().contentType().orElse(MediaType.APPLICATION_JSON);
-                        return response.bodyToMono(String.class)
-                                .defaultIfEmpty("")
-                                .flatMap(responseBody -> Mono.fromCallable(() -> {
-                                    try {
-                                        bodySentLatch.await(500, TimeUnit.MILLISECONDS);
-                                    } catch (InterruptedException e) {
-                                        Thread.currentThread().interrupt();
-                                    }
-                                    byte[] captured = requestBodyRef.get();
-                                    if (captured != null) {
-                                        String rewritten = rewriteResponseIdFromRequest(responseBody, captured);
-                                        if (rewritten != null) {
-                                            return ClientResponse.create(HttpStatus.OK)
-                                                    .header("Content-Type", MediaType.APPLICATION_JSON_VALUE)
-                                                    .body(rewritten)
-                                                    .build();
-                                        }
-                                        if (status.value() == 202) {
-                                            String synthetic = buildJsonRpcResponseWithId(captured);
-                                            if (synthetic != null) {
-                                                return ClientResponse.create(HttpStatus.OK)
-                                                        .header("Content-Type", MediaType.APPLICATION_JSON_VALUE)
-                                                        .body(synthetic)
-                                                        .build();
-                                            }
-                                        }
-                                    }
-                                    return ClientResponse.create(status)
-                                            .header("Content-Type", contentType.toString())
-                                            .body(responseBody)
-                                            .build();
-                                }))
-                                .doOnError(e -> log.warn("MCP Smithery filter error", e));
-                    })
-                    .doOnError(e -> log.warn("MCP Smithery exchange error", e));
-        };
-    }
-
-    private static ClientRequest wrapRequestWithBodyCapture(ClientRequest request, AtomicReference<byte[]> bodyRef, CountDownLatch bodySentLatch) {
-        BodyInserter<?, ? super ClientHttpRequest> original = request.body();
-        BodyInserter<?, ? super ClientHttpRequest> capturing = (output, context) -> {
-            ClientHttpRequest proxy = (ClientHttpRequest) Proxy.newProxyInstance(
-                    ClientHttpRequest.class.getClassLoader(),
-                    new Class<?>[]{ClientHttpRequest.class},
-                    new InvocationHandler() {
-                        @Override
-                        public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
-                            if ("writeWith".equals(method.getName()) && args != null && args.length == 1) {
-                                @SuppressWarnings("unchecked")
-                                org.reactivestreams.Publisher<? extends DataBuffer> body =
-                                        (org.reactivestreams.Publisher<? extends DataBuffer>) args[0];
-                                List<byte[]> chunks = new ArrayList<>();
-                                DataBufferFactory factory = output.bufferFactory();
-                                Flux<DataBuffer> copied = Flux.from(body).map(db -> {
-                                    byte[] arr = new byte[db.readableByteCount()];
-                                    db.read(arr);
-                                    DataBufferUtils.release(db);
-                                    chunks.add(arr);
-                                    DataBuffer buf = factory.allocateBuffer(arr.length);
-                                    buf.write(arr);
-                                    return buf;
-                                }).doOnComplete(() -> {
-                                    int total = chunks.stream().mapToInt(a -> a.length).sum();
-                                    byte[] full = new byte[total];
-                                    int offset = 0;
-                                    for (byte[] chunk : chunks) {
-                                        System.arraycopy(chunk, 0, full, offset, chunk.length);
-                                        offset += chunk.length;
-                                    }
-                                    bodyRef.set(full);
-                                    log.debug("MCP Smithery: request body captured, length={}", full.length);
-                                    bodySentLatch.countDown();
-                                }).doOnError(e -> {
-                                    log.warn("MCP Smithery: body capture error", e);
-                                    bodySentLatch.countDown();
-                                })
-                                .doOnCancel(bodySentLatch::countDown);
-                                return method.invoke(output, copied);
-                            }
-                            return method.invoke(output, args);
-                        }
-                    });
-            return original.insert(proxy, context);
-        };
-        return ClientRequest.from(request).body(capturing).build();
-    }
-
-    private static String rewriteResponseIdFromRequest(String responseBody, byte[] requestBody) {
-        if (responseBody == null || requestBody == null || requestBody.length == 0) return null;
-        try {
-            JsonNode reqRoot = JSON_MAPPER.readTree(requestBody);
-            if (reqRoot == null || !reqRoot.has("id") || reqRoot.get("id").isNull()) return null;
-            JsonNode respRoot = JSON_MAPPER.readTree(responseBody);
-            if (respRoot == null || !respRoot.isObject()) return null;
-            ObjectNode resp = (ObjectNode) respRoot;
-            resp.set("id", reqRoot.get("id"));
-            return JSON_MAPPER.writeValueAsString(resp);
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    private static String extractIdFromBody(byte[] requestBody) {
-        if (requestBody == null || requestBody.length == 0) return null;
-        try {
-            JsonNode root = JSON_MAPPER.readTree(requestBody);
-            return root != null && root.has("id") ? root.get("id").toString() : null;
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    private static String extractMethodFromBody(byte[] requestBody) {
-        if (requestBody == null || requestBody.length == 0) return null;
-        try {
-            JsonNode root = JSON_MAPPER.readTree(requestBody);
-            JsonNode m = root != null && root.has("method") ? root.get("method") : null;
-            return m != null ? m.asText() : null;
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    private static String buildJsonRpcResponseWithId(byte[] requestBody) {
-        String idJson = null;
-        String method = null;
-        if (requestBody != null && requestBody.length > 0) {
-            try {
-                JsonNode root = JSON_MAPPER.readTree(requestBody);
-                if (root != null) {
-                    if (root.has("id") && !root.get("id").isNull()) {
-                        idJson = JSON_MAPPER.writeValueAsString(root.get("id"));
-                    }
-                    if (root.has("method")) {
-                        JsonNode m = root.get("method");
-                        method = m != null ? m.asText() : null;
-                    }
-                }
-            } catch (Exception ignored) {
-            }
-        }
-        ObjectNode result = JSON_MAPPER.createObjectNode();
-        if ("initialize".equals(method)) {
-            result.put("protocolVersion", "2024-11-05");
-            ObjectNode caps = result.putObject("capabilities");
-            caps.putObject("tools").put("listChanged", true);
-            result.putObject("serverInfo").put("name", "smithery-placeholder").put("version", "0.0.0");
-        }
-        StringBuilder sb = new StringBuilder();
-        sb.append("{\"jsonrpc\":\"2.0\",\"id\":");
-        sb.append(idJson != null ? idJson : "null");
-        sb.append(",\"result\":");
-        sb.append(JSON_MAPPER.valueToTree(result).toString());
-        sb.append("}");
-        return sb.toString();
     }
 
     private McpClientTransport createSseTransport(McpServerConfig config) {
