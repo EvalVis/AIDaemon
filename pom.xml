@@ -74,7 +74,7 @@
 		<dependency>
 			<groupId>io.modelcontextprotocol.sdk</groupId>
 			<artifactId>mcp-spring-webflux</artifactId>
-			<version>0.17.1</version>
+			<version>0.18.1</version>
 		</dependency>
 
 		<dependency>
