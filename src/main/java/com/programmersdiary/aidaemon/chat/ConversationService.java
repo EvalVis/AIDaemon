@@ -1,7 +1,5 @@
 package com.programmersdiary.aidaemon.chat;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.programmersdiary.aidaemon.bot.BotService;
 import com.programmersdiary.aidaemon.delegation.DelegationService;
 import org.springframework.beans.factory.ObjectProvider;
@@ -10,13 +8,10 @@ import reactor.core.publisher.Flux;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 @Service
 public class ConversationService {
-
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private final ConversationRepository conversationRepository;
     private final ObjectProvider<DelegationService> delegationServiceProvider;
@@ -66,11 +61,7 @@ public class ConversationService {
         conversation.messages().add(ChatMessage.of("user", userMessage));
         var bot = botService.getBot(conversation.botName());
         var result = bot.chat(conversation.providerId(), conversation.messages(), conversationId);
-        if (result.orderedParts() != null && !result.orderedParts().isEmpty()) {
-            conversation.messages().add(ChatMessage.of("assistant", toPartsJson(result.orderedParts())));
-        } else {
-            conversation.messages().add(ChatMessage.of("assistant", result.response()));
-        }
+        conversation.messages().add(ChatMessage.of("assistant", result.assistantContent()));
         conversationRepository.save(conversation);
 
         if (!result.pendingSubConversationIds().isEmpty()) {
@@ -94,11 +85,7 @@ public class ConversationService {
 
         var bot = botService.getBot(conversation.botName());
         return bot.chatStream(conversation.providerId(), conversation.messages(), conversationId, result -> {
-            if (result.orderedParts() != null && !result.orderedParts().isEmpty()) {
-                conversation.messages().add(ChatMessage.of("assistant", toPartsJson(result.orderedParts())));
-            } else {
-                conversation.messages().add(ChatMessage.of("assistant", result.response()));
-            }
+            conversation.messages().add(ChatMessage.of("assistant", result.assistantContent()));
             conversationRepository.save(conversation);
             if (!result.pendingSubConversationIds().isEmpty()) {
                 var delegationService = delegationServiceProvider.getIfAvailable();
@@ -120,13 +107,5 @@ public class ConversationService {
 
     public void delete(String conversationId) {
         conversationRepository.deleteById(conversationId);
-    }
-
-    private static String toPartsJson(List<StreamChunk> orderedParts) {
-        try {
-            return OBJECT_MAPPER.writeValueAsString(Map.of("parts", orderedParts));
-        } catch (JsonProcessingException e) {
-            throw new RuntimeException(e);
-        }
     }
 }

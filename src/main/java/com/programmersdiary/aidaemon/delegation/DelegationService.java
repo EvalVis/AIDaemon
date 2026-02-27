@@ -4,10 +4,10 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.programmersdiary.aidaemon.chat.ChatMessage;
 import com.programmersdiary.aidaemon.chat.ChatResult;
+import com.programmersdiary.aidaemon.chat.ChatResult;
 import com.programmersdiary.aidaemon.chat.ChatService;
 import com.programmersdiary.aidaemon.chat.Conversation;
 import com.programmersdiary.aidaemon.chat.ConversationRepository;
-import com.programmersdiary.aidaemon.chat.StreamChunk;
 import com.programmersdiary.aidaemon.chat.StreamRequestMetadata;
 import com.programmersdiary.aidaemon.bot.BotService;
 import jakarta.annotation.PreDestroy;
@@ -30,7 +30,6 @@ import java.util.concurrent.locks.ReentrantLock;
 public class DelegationService {
 
     private static final Logger log = LoggerFactory.getLogger(DelegationService.class);
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private final ConversationRepository conversationRepository;
     private final ObjectProvider<ChatService> chatServiceProvider;
@@ -128,19 +127,7 @@ public class DelegationService {
     }
 
     private void addAssistantResult(List<ChatMessage> messages, ChatResult result) {
-        if (result.orderedParts() != null && !result.orderedParts().isEmpty()) {
-            messages.add(ChatMessage.of("assistant", toPartsJson(result.orderedParts())));
-        } else {
-            messages.add(ChatMessage.of("assistant", result.response()));
-        }
-    }
-
-    private static String toPartsJson(List<StreamChunk> orderedParts) {
-        try {
-            return OBJECT_MAPPER.writeValueAsString(Map.of("parts", orderedParts));
-        } catch (JsonProcessingException e) {
-            throw new RuntimeException(e);
-        }
+        messages.add(ChatMessage.of("assistant", result.assistantContent()));
     }
 
     private String buildStatusMessage(List<Conversation> subs, boolean allComplete) {

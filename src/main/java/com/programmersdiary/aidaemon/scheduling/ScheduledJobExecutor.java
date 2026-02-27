@@ -1,12 +1,9 @@
 package com.programmersdiary.aidaemon.scheduling;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.programmersdiary.aidaemon.chat.ChatMessage;
 import com.programmersdiary.aidaemon.chat.ChatService;
 import com.programmersdiary.aidaemon.bot.BotService;
 import com.programmersdiary.aidaemon.chat.ConversationService;
-import com.programmersdiary.aidaemon.chat.StreamChunk;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -83,8 +80,6 @@ public class ScheduledJobExecutor {
         log.info("Scheduled job '{}' with cron '{}'", job.description(), job.cronExpression());
     }
 
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-
     private void executeJob(ScheduledJob job) {
         try {
             var messages = List.of(ChatMessage.of("user", job.instruction()));
@@ -95,24 +90,11 @@ public class ScheduledJobExecutor {
             var name = "[SJ]" + job.description() + "-" + NAME_TIME.format(Instant.now());
             var conversation = conversationServiceProvider.getObject().create(name, job.providerId());
             conversation.messages().add(ChatMessage.of("user", job.instruction()));
-            conversation.messages().addAll(chatResult.toolMessages());
-            var assistantContent = buildAssistantContent(chatResult);
-            conversation.messages().add(ChatMessage.of("assistant", assistantContent));
+            conversation.messages().add(ChatMessage.of("assistant", chatResult.assistantContent()));
             conversationServiceProvider.getObject().save(conversation);
             log.info("Job '{}' executed, conversation {}", job.description(), conversation.id());
         } catch (Exception e) {
             log.error("Job '{}' failed: {}", job.description(), e.getMessage());
         }
-    }
-
-    private static String buildAssistantContent(com.programmersdiary.aidaemon.chat.ChatResult chatResult) {
-        if (chatResult.orderedParts() != null && !chatResult.orderedParts().isEmpty()) {
-            try {
-                return OBJECT_MAPPER.writeValueAsString(Map.of("parts", chatResult.orderedParts()));
-            } catch (JsonProcessingException e) {
-                return chatResult.response();
-            }
-        }
-        return chatResult.response();
     }
 }

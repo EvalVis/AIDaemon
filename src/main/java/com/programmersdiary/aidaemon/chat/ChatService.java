@@ -104,7 +104,7 @@ public class ChatService {
         var promptOptions = chatModelFactory.promptOptions(config, loggingTools);
         if (!(chatModel instanceof StreamingChatModel streamingModel)) {
             var error = "Provider does not support streaming; only streaming models are supported.";
-            onComplete.accept(new ChatResult("[Error] " + error, toolLog, List.of()));
+            onComplete.accept(new ChatResult("[Error] " + error, List.of()));
             return Flux.just(new StreamChunk(StreamChunk.TYPE_ANSWER, "[Error] " + error));
         }
 
@@ -145,10 +145,10 @@ public class ChatService {
                         partsWithReasoning.add(new StreamChunk(StreamChunk.TYPE_REASONING, reasoning));
                     }
                     partsWithReasoning.addAll(parts);
-                    onComplete.accept(new ChatResult(contentAccum.toString(), toolLog, pendingIds,
+                    onComplete.accept(new ChatResult(contentAccum.toString(), pendingIds,
                             partsWithReasoning.isEmpty() ? null : partsWithReasoning, reasoning));
                 })
-                .doOnError(e -> onComplete.accept(new ChatResult("[Error] " + e.getMessage(), toolLog, List.of())));
+                .doOnError(e -> onComplete.accept(new ChatResult("[Error] " + e.getMessage(), List.of())));
     }
 
     private static List<StreamChunk> coalesceOrderedChunks(List<StreamChunk> orderedChunks) {

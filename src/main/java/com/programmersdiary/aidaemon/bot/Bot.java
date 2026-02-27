@@ -64,13 +64,12 @@ public class Bot {
         return new StreamRequestMetadata(messages, conversationId, name, contextConfig.conversationLimit(isNamed()));
     }
 
-    public void appendToPersonalMemory(String userContent, List<ChatMessage> toolMessages, String assistantContent) {
-        botService.appendTurnToPersonalMemory(name, userContent, toolMessages, assistantContent);
+    public void appendToPersonalMemory(String userContent, String assistantContent) {
+        botService.appendTurnToPersonalMemory(name, userContent, assistantContent);
     }
 
     private void appendToPersonalMemoryAfterChat(List<ChatMessage> messages, ChatResult result) {
-        var lastUser = lastUserContent(messages);
-        appendToPersonalMemory(lastUser, result.toolMessages(), result.response());
+        appendToPersonalMemory(lastUserContent(messages), result.assistantContent());
     }
 
     private static String lastUserContent(List<ChatMessage> messages) {
