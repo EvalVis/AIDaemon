@@ -1,9 +1,8 @@
 package com.programmersdiary.aidaemon.web;
 
-import com.programmersdiary.aidaemon.chat.ChatContextBuilder;
+import com.programmersdiary.aidaemon.bot.BotService;
 import com.programmersdiary.aidaemon.chat.ChatRequest;
 import com.programmersdiary.aidaemon.chat.ChatService;
-import com.programmersdiary.aidaemon.chat.ContextConfig;
 import com.programmersdiary.aidaemon.chat.StreamRequestMetadata;
 import org.springframework.web.bind.annotation.*;
 
@@ -14,20 +13,19 @@ import java.util.Map;
 public class ChatController {
 
     private final ChatService chatService;
-    private final ChatContextBuilder contextBuilder;
-    private final ContextConfig contextConfig;
+    private final BotService botService;
 
-    public ChatController(ChatService chatService, ChatContextBuilder contextBuilder, ContextConfig contextConfig) {
+    public ChatController(ChatService chatService, BotService botService) {
         this.chatService = chatService;
-        this.contextBuilder = contextBuilder;
-        this.contextConfig = contextConfig;
+        this.botService = botService;
     }
 
     @PostMapping("/{providerId}")
     public Map<String, String> chat(@PathVariable String providerId, @RequestBody ChatRequest request) {
         var messages = request.messages();
-        var meta = new StreamRequestMetadata(messages, null, null, contextConfig.charsLimit());
-        var contextMessages = contextBuilder.buildMessages(messages, null, contextConfig.charsLimit(), 0, contextConfig.systemInstructions());
+        var bot = botService.getBot(null);
+        var meta = bot.streamRequestMetadata(messages, null);
+        var contextMessages = bot.buildContext(messages);
         var result = chatService.streamAndCollect(providerId, contextMessages, meta);
         return Map.of("response", result.response());
     }

@@ -4,10 +4,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.programmersdiary.aidaemon.chat.ChatMessage;
 import com.programmersdiary.aidaemon.chat.ChatService;
-import com.programmersdiary.aidaemon.chat.ChatContextBuilder;
-import com.programmersdiary.aidaemon.chat.ContextConfig;
+import com.programmersdiary.aidaemon.bot.BotService;
 import com.programmersdiary.aidaemon.chat.ConversationService;
-import com.programmersdiary.aidaemon.chat.StreamRequestMetadata;
 import com.programmersdiary.aidaemon.chat.StreamChunk;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
@@ -35,22 +33,19 @@ public class ScheduledJobExecutor {
     private final ScheduledJobRepository jobRepository;
     private final ObjectProvider<ChatService> chatServiceProvider;
     private final ObjectProvider<ConversationService> conversationServiceProvider;
-    private final ObjectProvider<ChatContextBuilder> contextBuilderProvider;
-    private final ObjectProvider<ContextConfig> contextConfigProvider;
+    private final ObjectProvider<BotService> botServiceProvider;
     private final TaskScheduler taskScheduler;
     private final Map<String, ScheduledFuture<?>> activeFutures = new ConcurrentHashMap<>();
 
     public ScheduledJobExecutor(ScheduledJobRepository jobRepository,
                                 ObjectProvider<ChatService> chatServiceProvider,
                                 ObjectProvider<ConversationService> conversationServiceProvider,
-                                ObjectProvider<ChatContextBuilder> contextBuilderProvider,
-                                ObjectProvider<ContextConfig> contextConfigProvider,
+                                ObjectProvider<BotService> botServiceProvider,
                                 TaskScheduler taskScheduler) {
         this.jobRepository = jobRepository;
         this.chatServiceProvider = chatServiceProvider;
         this.conversationServiceProvider = conversationServiceProvider;
-        this.contextBuilderProvider = contextBuilderProvider;
-        this.contextConfigProvider = contextConfigProvider;
+        this.botServiceProvider = botServiceProvider;
         this.taskScheduler = taskScheduler;
     }
 
@@ -93,10 +88,9 @@ public class ScheduledJobExecutor {
     private void executeJob(ScheduledJob job) {
         try {
             var messages = List.of(ChatMessage.of("user", job.instruction()));
-            var contextBuilder = contextBuilderProvider.getObject();
-            var contextConfig = contextConfigProvider.getObject();
-            var meta = new StreamRequestMetadata(messages, null, null, contextConfig.charsLimit());
-            var contextMessages = contextBuilder.buildMessages(messages, null, contextConfig.charsLimit(), 0, contextConfig.systemInstructions());
+            var bot = botServiceProvider.getObject().getBot(null);
+            var meta = bot.streamRequestMetadata(messages, null);
+            var contextMessages = bot.buildContext(messages);
             var chatResult = chatServiceProvider.getObject().streamAndCollect(job.providerId(), contextMessages, meta);
             var name = "[SJ]" + job.description() + "-" + NAME_TIME.format(Instant.now());
             var conversation = conversationServiceProvider.getObject().create(name, job.providerId());
