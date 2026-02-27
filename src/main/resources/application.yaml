@@ -14,7 +14,9 @@ aidaemon:
   shell-access: false
   delegation-enabled: false
   delegation-threshold-seconds: 30
-  chars-context-window: 30000
+  context-window:
+    chars-limit: 5000
+    personal-memory-ratio: 0.3
   config-dir: ${user.home}/.aidaemon
   system-instructions: |
     Use the saveMemory tool when the user asks you to remember something.

@@ -52,7 +52,8 @@ public class ChatService {
     private final BotService botService;
     private final String systemInstructions;
     private final boolean delegationEnabled;
-    private final int charsContextWindow;
+    private final int charsLimit;
+    private final double personalMemoryRatio;
     private final ObjectMapper objectMapper;
     private final SmitheryMcpTool smitheryMcpTool;
 
@@ -68,7 +69,8 @@ public class ChatService {
                        @Value("${aidaemon.system-instructions:}") String systemInstructions,
                        @Value("${aidaemon.delegation-enabled:false}") boolean delegationEnabled,
                        @Value("${aidaemon.delegation-threshold-seconds:30}") int delegationThresholdSeconds,
-                       @Value("${aidaemon.chars-context-window:0}") int charsContextWindow) {
+                       @Value("${aidaemon.context-window.chars-limit:${aidaemon.chars-context-window:0}}") int charsLimit,
+                       @Value("${aidaemon.context-window.personal-memory-ratio:0}") double personalMemoryRatio) {
         this.configRepository = configRepository;
         this.chatModelFactory = chatModelFactory;
         this.skillsService = skillsService;
@@ -81,7 +83,8 @@ public class ChatService {
         this.systemInstructions = systemInstructions
                 .replace("{threshold}", String.valueOf(delegationThresholdSeconds));
         this.delegationEnabled = delegationEnabled;
-        this.charsContextWindow = charsContextWindow;
+        this.charsLimit = charsLimit;
+        this.personalMemoryRatio = Math.max(0, Math.min(1, personalMemoryRatio));
         this.objectMapper = new ObjectMapper();
     }
 
@@ -110,12 +113,20 @@ public class ChatService {
         var config = configRepository.findById(providerId)
                 .orElseThrow(() -> new IllegalArgumentException("Provider not found: " + providerId));
 
+        var namedBot = botName != null && !botName.isBlank() && !"default".equalsIgnoreCase(botName);
+        var conversationLimit = charsLimit;
+        var personalMemoryLimit = 0;
+        if (namedBot) {
+            conversationLimit = (int) (charsLimit * (1 - personalMemoryRatio));
+            personalMemoryLimit = (int) (charsLimit * personalMemoryRatio);
+        }
+
         var filtered = messages.stream().filter(m -> !"tool".equals(m.role())).toList();
         final var toolLog = new ArrayList<ChatMessage>();
         var sink = Sinks.many().unicast().<StreamChunk>onBackpressureBuffer();
         var onToolChunk = (Consumer<StreamChunk>) c -> sink.tryEmitNext(c);
         var loggingTools = new ArrayList<ToolCallback>();
-        Arrays.asList(ToolCallbacks.from(new ChatTools(skillsService, jobExecutor, providerId, filtered, charsContextWindow)))
+        Arrays.asList(ToolCallbacks.from(new ChatTools(skillsService, jobExecutor, providerId, filtered, conversationLimit)))
                 .forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog, null, onToolChunk)));
         Arrays.asList(ToolCallbacks.from(new ShellTool(shellAccessService)))
                 .forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog, null, onToolChunk)));
@@ -146,7 +157,7 @@ public class ChatService {
         final StringBuilder reasoningAccum = new StringBuilder();
         final var orderedChunks = new ArrayList<StreamChunk>();
 
-        var contentStream = streamingModel.stream(buildPrompt(messages, promptOptions, botName))
+        var contentStream = streamingModel.stream(buildPrompt(messages, promptOptions, botName, conversationLimit, personalMemoryLimit))
                 .flatMap(response -> {
                     var c = toStreamChunk(response);
                     return c != null ? Flux.just(c) : Flux.empty();
@@ -239,7 +250,8 @@ public class ChatService {
         return Map.of("cache_control", Map.of("type", "ephemeral"));
     }
 
-    private Prompt buildPrompt(List<ChatMessage> messages, ChatOptions promptOptions, String botName) {
+    private Prompt buildPrompt(List<ChatMessage> messages, ChatOptions promptOptions, String botName,
+                               int conversationLimit, int personalMemoryLimit) {
         var springMessages = new ArrayList<Message>();
         springMessages
         .add(SystemMessage.builder().text(systemInstructions)
@@ -249,6 +261,13 @@ public class ChatService {
         if (soul != null && !soul.isBlank()) {
             springMessages.add(new SystemMessage(soul));
         }
+        if (personalMemoryLimit > 0) {
+            var personalMemory = botService.loadPersonalMemoryTrimmed(botName, personalMemoryLimit);
+            if (personalMemory != null && !personalMemory.isBlank()) {
+                springMessages.add(new SystemMessage(
+                    "Your context includes personal memory (recent interactions across conversations), limited to " + personalMemoryLimit + " characters.\n\n" + personalMemory));
+            }
+        }
         springMessages.addAll(memoryMessages());
         var filtered = messages
             .stream()
@@ -256,7 +275,7 @@ public class ChatService {
             .toList();
         var history = filtered.subList(0, filtered.size() - 1);
         if (!history.isEmpty()) {
-            var trimmed = trimToContextWindow(history, charsContextWindow);
+            var trimmed = trimToContextWindow(history, conversationLimit);
             int firstInContext = history.size() - trimmed.size();
             springMessages.add(new SystemMessage(
                 "This conversation has " + filtered.size() + " messages. "

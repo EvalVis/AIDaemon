@@ -118,7 +118,7 @@ sequenceDiagram
 - **Delegation** -- Optional sub-agent delegation: the AI splits work into sub-conversations that run in parallel; when they complete, the parent is notified and can synthesize or request revisions. Enable with `aidaemon.delegation-enabled=true`.
 - **Thinking / reasoning** -- Supported for providers that expose it (e.g. Anthropic extended thinking). Reasoning is streamed separately and shown in the Web UI; scheduled job results include thinking in the stored output.
 - **Prompt caching** -- Conversation-history and prompt caching are used where supported (e.g. Anthropic, Gemini) to reduce cost and latency.
-- **Context window** -- Optional `aidaemon.chars-context-window` (character limit) trims older messages so the prompt fits. The AI can use the `retrieveOlderMessages` tool to fetch older conversation content by index when context is trimmed.
+- **Context window** -- Optional `aidaemon.context-window.chars-limit` (character limit) trims older messages and, for named bots, personal memory so the prompt fits. Use `aidaemon.context-window.personal-memory-ratio` (0–1) to split the budget between conversation history and bot personal memory. The AI can use the `retrieveOlderMessages` tool to fetch older conversation content when context is trimmed.
 - **Persistent memory** -- AI can save and recall information across sessions via `memory.json`.
 - **Skills** -- Drop instruction files into `~/.aidaemon/skills/` or install from [Smithery](https://smithery.ai) via REST endpoint. The AI reads them for domain-specific context.
 - **MCP support** -- Connect remote (Streamable HTTP, SSE) and local (stdio) MCP servers. Drop JSON configs into `~/.aidaemon/mcps/` and reload, or add [Smithery](https://smithery.ai)-hosted MCPs via chat (Notion, Google Calendar, etc.).
@@ -411,7 +411,8 @@ Optional `application.yaml` / env properties:
 | `aidaemon.shell-access` | `false` | Allow AI shell execution |
 | `aidaemon.delegation-enabled` | `false` | Enable sub-agent delegation |
 | `aidaemon.delegation-threshold-seconds` | `30` | Estimated seconds above which the model should delegate |
-| `aidaemon.chars-context-window` | `0` | Max characters of history sent to the model (0 = no trim). Use with `retrieveOlderMessages` for long chats |
+| `aidaemon.context-window.chars-limit` | `0` | Max characters for conversation history (and, for named bots, conversation + personal memory combined). Use with `retrieveOlderMessages` for long chats |
+| `aidaemon.context-window.personal-memory-ratio` | `0` | For named bots only: share of chars-limit used for personal memory (0–1). Remainder is for conversation history |
 | `aidaemon.system-instructions` | (see application.yaml) | System prompt for the model |
 
 ## Caution

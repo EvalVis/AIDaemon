@@ -2,6 +2,7 @@ package com.programmersdiary.aidaemon.chat;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.programmersdiary.aidaemon.bot.BotService;
 import com.programmersdiary.aidaemon.delegation.DelegationService;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
@@ -20,13 +21,16 @@ public class ConversationService {
     private final ChatService chatService;
     private final ConversationRepository conversationRepository;
     private final ObjectProvider<DelegationService> delegationServiceProvider;
+    private final BotService botService;
 
     public ConversationService(ChatService chatService,
                                ConversationRepository conversationRepository,
-                               ObjectProvider<DelegationService> delegationServiceProvider) {
+                               ObjectProvider<DelegationService> delegationServiceProvider,
+                               BotService botService) {
         this.chatService = chatService;
         this.conversationRepository = conversationRepository;
         this.delegationServiceProvider = delegationServiceProvider;
+        this.botService = botService;
     }
 
     public Conversation create(String name, String providerId) {
@@ -79,6 +83,8 @@ public class ConversationService {
             }
         }
 
+        botService.appendTurnToPersonalMemory(conversation.botName(), userMessage, result.toolMessages(), result.response());
+
         return result.response();
     }
 
@@ -104,6 +110,7 @@ public class ConversationService {
                     delegationService.startSubAgents(result.pendingSubConversationIds());
                 }
             }
+            botService.appendTurnToPersonalMemory(conversation.botName(), userMessage, result.toolMessages(), result.response());
         }, conversation.botName());
     }
 
