@@ -3,6 +3,8 @@ package com.programmersdiary.aidaemon.skills;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.programmersdiary.aidaemon.chat.ChatMessage;
+import com.programmersdiary.aidaemon.bot.BotRepository;
+import com.programmersdiary.aidaemon.bot.PersonalMemoryEntry;
 import com.programmersdiary.aidaemon.scheduling.ScheduledJob;
 import com.programmersdiary.aidaemon.scheduling.ScheduledJobExecutor;
 import org.springframework.ai.tool.annotation.Tool;
@@ -23,11 +25,13 @@ public class ChatTools {
     private final String currentProviderId;
     private final List<ChatMessage> conversationMessages;
     private final int charsContextWindow;
+    private final String botName;
+    private final BotRepository botRepository;
 
     public ChatTools(SkillsService skillsService,
                      ScheduledJobExecutor jobExecutor,
                      String currentProviderId) {
-        this(skillsService, jobExecutor, currentProviderId, null, 0);
+        this(skillsService, jobExecutor, currentProviderId, null, 0, null, null);
     }
 
     public ChatTools(SkillsService skillsService,
@@ -35,11 +39,23 @@ public class ChatTools {
                      String currentProviderId,
                      List<ChatMessage> conversationMessages,
                      int charsContextWindow) {
+        this(skillsService, jobExecutor, currentProviderId, conversationMessages, charsContextWindow, null, null);
+    }
+
+    public ChatTools(SkillsService skillsService,
+                     ScheduledJobExecutor jobExecutor,
+                     String currentProviderId,
+                     List<ChatMessage> conversationMessages,
+                     int charsContextWindow,
+                     String botName,
+                     BotRepository botRepository) {
         this.skillsService = skillsService;
         this.jobExecutor = jobExecutor;
         this.currentProviderId = currentProviderId;
         this.conversationMessages = conversationMessages != null ? List.copyOf(conversationMessages) : null;
         this.charsContextWindow = charsContextWindow;
+        this.botName = botName;
+        this.botRepository = botRepository;
     }
 
     @Tool(description = "Save information to persistent memory. Use when the user asks you to remember something.")
@@ -147,6 +163,37 @@ public class ChatTools {
             lines.add("[" + (startIndexInclusive + i) + "] " + m.role() + ": " + displayContent);
         }
         return "startIndex: " + startIndexInclusive + ", actualEndIndex: " + actualEnd + ", messages:\n" + String.join("\n", lines);
+    }
+
+    @Tool(description = "Retrieve older personal memory entries by message index range (named bots only). Provide startIndexInclusive (message index); optionally endIndexExclusive. If endIndexExclusive is omitted, returns all entries from startIndex to the end. Returns: startIndex, actualEndIndex (exclusive), and the entry list.")
+    public String retrieveOlderPersonalMemory(
+            @ToolParam(description = "Start message index (inclusive), 0-based") int startIndexInclusive,
+            @ToolParam(description = "End message index (exclusive). Omit to include all from startIndex to end") Integer endIndexExclusive) {
+        if (botName == null || botName.isBlank() || "default".equalsIgnoreCase(botName) || botRepository == null) {
+            return "Personal memory is only available for named bots.";
+        }
+        if (!botRepository.exists(botName)) {
+            return "No personal memory for this bot.";
+        }
+        var entries = botRepository.loadPersonalMemory(botName);
+        if (entries.isEmpty()) {
+            return "No personal memory for this bot.";
+        }
+        int size = entries.size();
+        if (startIndexInclusive < 0 || startIndexInclusive >= size) {
+            return "Invalid startIndexInclusive: " + startIndexInclusive + ". Personal memory has " + size + " entries (indices 0 to " + (size - 1) + ").";
+        }
+        int end = endIndexExclusive == null ? size : Math.min(endIndexExclusive, size);
+        if (end <= startIndexInclusive) {
+            return "Invalid range: endIndexExclusive must be greater than startIndexInclusive.";
+        }
+        var slice = entries.subList(startIndexInclusive, end);
+        var lines = new ArrayList<String>();
+        for (int i = 0; i < slice.size(); i++) {
+            var e = slice.get(i);
+            lines.add("[" + (startIndexInclusive + i) + "] " + e.role() + ": " + (e.content() != null ? e.content() : ""));
+        }
+        return "startIndex: " + startIndexInclusive + ", actualEndIndex: " + end + ", entries:\n" + String.join("\n", lines);
     }
 
     private static String contentWithoutReasoningAndTools(ChatMessage message) {

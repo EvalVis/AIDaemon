@@ -38,12 +38,13 @@ public class ChatContextBuilder {
             springMessages.add(new SystemMessage(soul));
         }
         if (personalMemoryLimit > 0) {
-            var personalEntries = botService.loadPersonalMemoryTrimmed(botName, personalMemoryLimit);
-            if (!personalEntries.isEmpty()) {
+            var trimmed = botService.loadPersonalMemoryTrimmed(botName, personalMemoryLimit);
+            if (!trimmed.entries().isEmpty()) {
                 springMessages.add(new SystemMessage(
-                        "Personal memory (recent interactions across conversations), limited to " + personalMemoryLimit
-                                + " characters. Use retrieve_older_messages for conversation history."));
-                springMessages.addAll(personalMemoryToMessages(personalEntries));
+                        "Personal memory (recent interactions across conversations). "
+                                + trimmed.totalEntryCount() + " messages in total. Current context: message index "
+                                + trimmed.startIndexInclusive() + " (inclusive) to latest. Use retrieve_older_messages for conversation history; use retrieve_older_personal_memory for older personal memory."));
+                springMessages.addAll(personalMemoryToMessages(trimmed.entries()));
             }
         }
         springMessages.addAll(memoryMessages());

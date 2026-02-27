@@ -1,6 +1,8 @@
 package com.programmersdiary.aidaemon.chat;
 
+import com.programmersdiary.aidaemon.chat.StreamRequestMetadata;
 import com.programmersdiary.aidaemon.delegation.DelegationTools;
+import com.programmersdiary.aidaemon.bot.BotRepository;
 import com.programmersdiary.aidaemon.mcp.McpService;
 import com.programmersdiary.aidaemon.provider.ChatModelFactory;
 import com.programmersdiary.aidaemon.provider.ProviderConfigRepository;
@@ -44,6 +46,7 @@ public class ChatService {
     private final ConversationRepository conversationRepository;
     private final boolean delegationEnabled;
     private final SmitheryMcpTool smitheryMcpTool;
+    private final BotRepository botRepository;
 
     public ChatService(ProviderConfigRepository configRepository,
                        ChatModelFactory chatModelFactory,
@@ -52,6 +55,7 @@ public class ChatService {
                        ShellAccessService shellAccessService,
                        McpService mcpService,
                        ConversationRepository conversationRepository,
+                       BotRepository botRepository,
                        @Autowired(required = false) SmitheryMcpTool smitheryMcpTool,
                        @Value("${aidaemon.delegation-enabled:false}") boolean delegationEnabled) {
         this.configRepository = configRepository;
@@ -61,6 +65,7 @@ public class ChatService {
         this.shellAccessService = shellAccessService;
         this.mcpService = mcpService;
         this.conversationRepository = conversationRepository;
+        this.botRepository = botRepository;
         this.smitheryMcpTool = smitheryMcpTool;
         this.delegationEnabled = delegationEnabled;
     }
@@ -81,7 +86,7 @@ public class ChatService {
         var sink = Sinks.many().unicast().<StreamChunk>onBackpressureBuffer();
         var onToolChunk = (Consumer<StreamChunk>) c -> sink.tryEmitNext(c);
         var loggingTools = new ArrayList<ToolCallback>();
-        Arrays.asList(ToolCallbacks.from(new ChatTools(skillsService, jobExecutor, providerId, filtered, meta.conversationLimit())))
+        Arrays.asList(ToolCallbacks.from(new ChatTools(skillsService, jobExecutor, providerId, filtered, meta.conversationLimit(), meta.botName(), botRepository)))
                 .forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog, null, onToolChunk)));
         Arrays.asList(ToolCallbacks.from(new ShellTool(shellAccessService)))
                 .forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog, null, onToolChunk)));

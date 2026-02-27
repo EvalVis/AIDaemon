@@ -61,16 +61,28 @@ public class BotService {
         return repository.loadSoul(name);
     }
 
-    public List<PersonalMemoryEntry> loadPersonalMemoryTrimmed(String name, int maxChars) {
+    public TrimmedPersonalMemory loadPersonalMemoryTrimmed(String name, int maxChars) {
         if (name == null || name.isBlank() || "default".equalsIgnoreCase(name) || maxChars <= 0) {
+            return new TrimmedPersonalMemory(0, List.of(), 0);
+        }
+        if (!repository.exists(name)) {
+            return new TrimmedPersonalMemory(0, List.of(), 0);
+        }
+        var entries = repository.loadPersonalMemory(name);
+        if (entries.isEmpty()) return new TrimmedPersonalMemory(0, List.of(), 0);
+        var trimmed = ContextWindowTrimmer.trimPersonalMemory(entries, maxChars);
+        int startIndexInclusive = entries.size() - trimmed.size();
+        return new TrimmedPersonalMemory(startIndexInclusive, trimmed, entries.size());
+    }
+
+    public List<PersonalMemoryEntry> loadPersonalMemory(String name) {
+        if (name == null || name.isBlank() || "default".equalsIgnoreCase(name)) {
             return List.of();
         }
         if (!repository.exists(name)) {
             return List.of();
         }
-        var entries = repository.loadPersonalMemory(name);
-        if (entries.isEmpty()) return List.of();
-        return ContextWindowTrimmer.trimPersonalMemory(entries, maxChars);
+        return repository.loadPersonalMemory(name);
     }
 
     public void appendTurnToPersonalMemory(String botName, List<ChatMessage> contextConversation, String assistantContent) {
