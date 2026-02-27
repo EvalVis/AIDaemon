@@ -7,6 +7,7 @@ import com.programmersdiary.aidaemon.chat.ChatService;
 import com.programmersdiary.aidaemon.chat.ContextConfig;
 import com.programmersdiary.aidaemon.chat.StreamChunk;
 import com.programmersdiary.aidaemon.chat.StreamRequestMetadata;
+import com.programmersdiary.aidaemon.skills.SkillsService;
 import org.springframework.ai.chat.messages.Message;
 import reactor.core.publisher.Flux;
 
@@ -21,10 +22,11 @@ public class Bot {
     private final ContextConfig contextConfig;
     private final ChatService chatService;
 
-    Bot(String name, BotService botService, ChatContextBuilder contextBuilder, ContextConfig contextConfig, ChatService chatService) {
+    Bot(String name, BotService botService, ContextConfig contextConfig, ChatService chatService,
+        SkillsService skillsService) {
         this.name = name;
         this.botService = botService;
-        this.contextBuilder = contextBuilder;
+        this.contextBuilder = new ChatContextBuilder(botService, skillsService);
         this.contextConfig = contextConfig;
         this.chatService = chatService;
     }

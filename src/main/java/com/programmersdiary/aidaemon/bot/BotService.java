@@ -1,10 +1,10 @@
 package com.programmersdiary.aidaemon.bot;
 
 import com.programmersdiary.aidaemon.chat.ChatMessage;
-import com.programmersdiary.aidaemon.chat.ChatContextBuilder;
 import com.programmersdiary.aidaemon.chat.ChatService;
 import com.programmersdiary.aidaemon.chat.ContextConfig;
 import com.programmersdiary.aidaemon.chat.ContextWindowTrimmer;
+import com.programmersdiary.aidaemon.skills.SkillsService;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -14,19 +14,19 @@ import java.util.List;
 public class BotService {
 
     private final BotRepository repository;
-    private final ChatContextBuilder contextBuilder;
     private final ContextConfig contextConfig;
     private final ChatService chatService;
+    private final SkillsService skillsService;
 
-    public BotService(BotRepository repository, ChatContextBuilder contextBuilder, ContextConfig contextConfig, ChatService chatService) {
+    public BotService(BotRepository repository, ContextConfig contextConfig, ChatService chatService, SkillsService skillsService) {
         this.repository = repository;
-        this.contextBuilder = contextBuilder;
         this.contextConfig = contextConfig;
         this.chatService = chatService;
+        this.skillsService = skillsService;
     }
 
     public Bot getBot(String name) {
-        return new Bot(name, this, contextBuilder, contextConfig, chatService);
+        return new Bot(name, this, contextConfig, chatService, skillsService);
     }
 
     public List<BotDefinition> listBots() {
