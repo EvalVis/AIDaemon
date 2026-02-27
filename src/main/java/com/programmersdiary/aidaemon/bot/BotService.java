@@ -2,6 +2,7 @@ package com.programmersdiary.aidaemon.bot;
 
 import com.programmersdiary.aidaemon.chat.ChatMessage;
 import com.programmersdiary.aidaemon.chat.ChatContextBuilder;
+import com.programmersdiary.aidaemon.chat.ChatService;
 import com.programmersdiary.aidaemon.chat.ContextConfig;
 import com.programmersdiary.aidaemon.chat.ContextWindowTrimmer;
 import org.springframework.stereotype.Service;
@@ -15,15 +16,17 @@ public class BotService {
     private final BotRepository repository;
     private final ChatContextBuilder contextBuilder;
     private final ContextConfig contextConfig;
+    private final ChatService chatService;
 
-    public BotService(BotRepository repository, ChatContextBuilder contextBuilder, ContextConfig contextConfig) {
+    public BotService(BotRepository repository, ChatContextBuilder contextBuilder, ContextConfig contextConfig, ChatService chatService) {
         this.repository = repository;
         this.contextBuilder = contextBuilder;
         this.contextConfig = contextConfig;
+        this.chatService = chatService;
     }
 
     public Bot getBot(String name) {
-        return new Bot(name, this, contextBuilder, contextConfig);
+        return new Bot(name, this, contextBuilder, contextConfig, chatService);
     }
 
     public List<BotDefinition> listBots() {

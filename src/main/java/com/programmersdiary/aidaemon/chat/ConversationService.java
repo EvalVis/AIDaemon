@@ -18,16 +18,13 @@ public class ConversationService {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
-    private final ChatService chatService;
     private final ConversationRepository conversationRepository;
     private final ObjectProvider<DelegationService> delegationServiceProvider;
     private final BotService botService;
 
-    public ConversationService(ChatService chatService,
-                               ConversationRepository conversationRepository,
+    public ConversationService(ConversationRepository conversationRepository,
                                ObjectProvider<DelegationService> delegationServiceProvider,
                                BotService botService) {
-        this.chatService = chatService;
         this.conversationRepository = conversationRepository;
         this.delegationServiceProvider = delegationServiceProvider;
         this.botService = botService;
@@ -68,9 +65,7 @@ public class ConversationService {
         }
         conversation.messages().add(ChatMessage.of("user", userMessage));
         var bot = botService.getBot(conversation.botName());
-        var meta = bot.streamRequestMetadata(conversation.messages(), conversationId);
-        var contextMessages = bot.buildContext(conversation.messages());
-        var result = chatService.streamAndCollect(conversation.providerId(), contextMessages, meta);
+        var result = bot.chat(conversation.providerId(), conversation.messages(), conversationId);
         if (result.orderedParts() != null && !result.orderedParts().isEmpty()) {
             conversation.messages().add(ChatMessage.of("assistant", toPartsJson(result.orderedParts())));
         } else {
@@ -85,8 +80,6 @@ public class ConversationService {
             }
         }
 
-        bot.appendToPersonalMemory(userMessage, result.toolMessages(), result.response());
-
         return result.response();
     }
 
@@ -100,10 +93,7 @@ public class ConversationService {
         conversationRepository.save(conversation);
 
         var bot = botService.getBot(conversation.botName());
-        var meta = bot.streamRequestMetadata(conversation.messages(), conversationId);
-        var contextMessages = bot.buildContext(conversation.messages());
-
-        return chatService.stream(conversation.providerId(), contextMessages, meta, result -> {
+        return bot.chatStream(conversation.providerId(), conversation.messages(), conversationId, result -> {
             if (result.orderedParts() != null && !result.orderedParts().isEmpty()) {
                 conversation.messages().add(ChatMessage.of("assistant", toPartsJson(result.orderedParts())));
             } else {
@@ -116,7 +106,6 @@ public class ConversationService {
                     delegationService.startSubAgents(result.pendingSubConversationIds());
                 }
             }
-            bot.appendToPersonalMemory(userMessage, result.toolMessages(), result.response());
         });
     }
 
