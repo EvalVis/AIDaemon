@@ -32,19 +32,44 @@ public class ConversationController {
         var name = request.getOrDefault("name", "Untitled");
         var providerId = request.get("providerId");
         if (providerId != null && providerId.isBlank()) providerId = null;
-        var conversation = conversationService.create(name, providerId);
+        var botName = request.get("botName");
+        if (botName != null && (botName.isBlank() || "default".equalsIgnoreCase(botName))) botName = null;
+        var conversation = conversationService.create(name, providerId, botName, null);
         var out = new HashMap<String, Object>();
         out.put("conversationId", conversation.id());
         out.put("name", conversation.name());
         out.put("providerId", conversation.providerId());
+        out.put("botName", conversation.botName());
         return out;
     }
 
     @PatchMapping("/{id}")
     public Conversation update(@PathVariable String id, @RequestBody Map<String, String> request) {
-        var providerId = request.get("providerId");
-        if (providerId != null && providerId.isBlank()) providerId = null;
-        return conversationService.updateProvider(id, providerId);
+        var conversation = conversationService.get(id);
+        var providerId = conversation.providerId();
+        if (request.containsKey("providerId")) {
+            var rawProviderId = request.get("providerId");
+            providerId = (rawProviderId == null || rawProviderId.isBlank()) ? null : rawProviderId;
+        }
+        var botName = conversation.botName();
+        if (request.containsKey("botName")) {
+            var rawBot = request.get("botName");
+            if (rawBot == null || rawBot.isBlank() || "default".equalsIgnoreCase(rawBot)) {
+                botName = null;
+            } else {
+                botName = rawBot;
+            }
+        }
+        var updated = new com.programmersdiary.aidaemon.chat.Conversation(
+                conversation.id(),
+                conversation.name(),
+                providerId,
+                botName,
+                conversation.messages(),
+                conversation.parentConversationId(),
+                conversation.createdAtMillis());
+        conversationService.save(updated);
+        return updated;
     }
 
     @PostMapping("/{id}/messages")

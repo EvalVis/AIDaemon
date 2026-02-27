@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import Sidebar from './components/Sidebar';
 import ChatWindow from './components/ChatWindow';
 import * as api from './api';
-import type { Conversation, CreateProviderRequest, Provider } from './types';
+import type { Bot, Conversation, CreateBotRequest, CreateProviderRequest, Provider } from './types';
 
 export interface StreamPart {
   type: 'answer' | 'tool' | 'reasoning';
@@ -16,6 +16,7 @@ export interface StreamingContent {
 
 export default function App() {
   const [providers, setProviders] = useState<Provider[]>([]);
+  const [bots, setBots] = useState<Bot[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
@@ -36,6 +37,7 @@ export default function App() {
   useEffect(() => {
     api.fetchProviders().then(setProviders);
     api.fetchConversations().then(setConversations);
+    api.fetchBots().then(setBots);
   }, []);
 
   useEffect(() => {
@@ -51,12 +53,18 @@ export default function App() {
     setProviders((prev) => [...prev, created]);
   };
 
+  const handleAddBot = async (req: CreateBotRequest) => {
+    const created = await api.createBot(req);
+    setBots((prev) => [...prev, created]);
+  };
+
   const handleCreateConversation = async (name: string, providerId?: string | null) => {
     const res = await api.createConversation(name, providerId);
     const conv: Conversation = {
       id: res.conversationId,
       name: res.name,
       providerId: res.providerId ?? null,
+      botName: res.botName ?? null,
       messages: [],
     };
     setConversations((prev) => [...prev, conv]);
@@ -65,7 +73,16 @@ export default function App() {
 
   const handleUpdateConversationProvider = async (id: string, providerId: string | null) => {
     const updated = await api.updateConversation(id, { providerId });
-    setConversations((prev) => prev.map((c) => (c.id === id ? { ...c, providerId: updated.providerId } : c)));
+    setConversations((prev) =>
+      prev.map((c) => (c.id === id ? { ...c, providerId: updated.providerId ?? null } : c)),
+    );
+  };
+
+  const handleUpdateConversationBot = async (id: string, botName: string | null) => {
+    const updated = await api.updateConversation(id, { botName });
+    setConversations((prev) =>
+      prev.map((c) => (c.id === id ? { ...c, botName: updated.botName ?? null } : c)),
+    );
   };
 
   const handleDeleteConversation = async (id: string) => {
@@ -154,17 +171,20 @@ export default function App() {
     <div className="flex h-screen">
       <Sidebar
         providers={providers}
+        bots={bots}
         conversations={conversations}
         activeId={activeId}
         onSelectConversation={setActiveId}
         onCreateConversation={handleCreateConversation}
         onDeleteConversation={handleDeleteConversation}
         onAddProvider={handleAddProvider}
+        onAddBot={handleAddBot}
       />
       <ChatWindow
         key={activeId ?? ''}
         conversation={activeConversation}
         providers={providers}
+        bots={bots}
         sending={sending}
         streaming={streaming}
         lastStreamedContent={activeId && lastStreamedContent?.conversationId === activeId ? lastStreamedContent : null}
@@ -172,6 +192,7 @@ export default function App() {
         onInputDraftChange={setInputDraft}
         onSend={handleSend}
         onUpdateProvider={handleUpdateConversationProvider}
+        onUpdateBot={handleUpdateConversationBot}
       />
     </div>
   );

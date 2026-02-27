@@ -30,12 +30,16 @@ public class ConversationService {
     }
 
     public Conversation create(String name, String providerId) {
-        return create(name, providerId, null);
+        return create(name, providerId, null, null);
     }
 
     public Conversation create(String name, String providerId, String parentConversationId) {
+        return create(name, providerId, null, parentConversationId);
+    }
+
+    public Conversation create(String name, String providerId, String botName, String parentConversationId) {
         var conversation = new Conversation(
-                UUID.randomUUID().toString(), name, providerId, new ArrayList<>(), parentConversationId,
+                UUID.randomUUID().toString(), name, providerId, botName, new ArrayList<>(), parentConversationId,
                 System.currentTimeMillis());
         return conversationRepository.save(conversation);
     }
@@ -43,8 +47,8 @@ public class ConversationService {
     public Conversation updateProvider(String conversationId, String providerId) {
         var conversation = conversationRepository.findById(conversationId)
                 .orElseThrow(() -> new IllegalArgumentException("Conversation not found: " + conversationId));
-        var updated = new Conversation(conversation.id(), conversation.name(), providerId, conversation.messages(),
-                conversation.parentConversationId(), conversation.createdAtMillis());
+        var updated = new Conversation(conversation.id(), conversation.name(), providerId, conversation.botName(),
+                conversation.messages(), conversation.parentConversationId(), conversation.createdAtMillis());
         return conversationRepository.save(updated);
     }
 
@@ -59,7 +63,8 @@ public class ConversationService {
             throw new IllegalArgumentException("No agent selected for this conversation");
         }
         conversation.messages().add(ChatMessage.of("user", userMessage));
-        var result = chatService.streamAndCollect(conversation.providerId(), conversation.messages(), conversationId);
+        var result = chatService.streamAndCollect(
+                conversation.providerId(), conversation.messages(), conversationId, conversation.botName());
         if (result.orderedParts() != null && !result.orderedParts().isEmpty()) {
             conversation.messages().add(ChatMessage.of("assistant", toPartsJson(result.orderedParts())));
         } else {
@@ -99,7 +104,7 @@ public class ConversationService {
                     delegationService.startSubAgents(result.pendingSubConversationIds());
                 }
             }
-        });
+        }, conversation.botName());
     }
 
     public Conversation get(String conversationId) {

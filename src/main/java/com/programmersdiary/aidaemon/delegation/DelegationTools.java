@@ -15,14 +15,17 @@ public class DelegationTools {
     private final ConversationRepository conversationRepository;
     private final String parentConversationId;
     private final String providerId;
+    private final String botName;
     private final List<String> pendingSubConversationIds = new ArrayList<>();
 
     public DelegationTools(ConversationRepository conversationRepository,
                            String parentConversationId,
-                           String providerId) {
+                           String providerId,
+                           String botName) {
         this.conversationRepository = conversationRepository;
         this.parentConversationId = parentConversationId;
         this.providerId = providerId;
+        this.botName = botName;
     }
 
     @Tool(description = "Delegate a subproblem to a sub-agent. Creates a sub-conversation and sends the instruction. " +
@@ -31,7 +34,7 @@ public class DelegationTools {
             @ToolParam(description = "Short descriptive name for the sub-task") String name,
             @ToolParam(description = "Clear, self-contained instruction for the sub-agent to solve") String instruction) {
         var subConversation = new Conversation(
-                UUID.randomUUID().toString(), name, providerId,
+                UUID.randomUUID().toString(), name, providerId, botName,
                 new ArrayList<>(List.of(ChatMessage.of("user", instruction))),
                 parentConversationId, System.currentTimeMillis());
         conversationRepository.save(subConversation);

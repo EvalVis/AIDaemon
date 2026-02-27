@@ -1,4 +1,4 @@
-import type { Conversation, CreateProviderRequest, Provider } from './types';
+import type { Bot, Conversation, CreateBotRequest, CreateProviderRequest, Provider } from './types';
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
 
@@ -25,7 +25,10 @@ export async function fetchConversations(): Promise<Conversation[]> {
   return res.json();
 }
 
-export async function createConversation(name: string, providerId?: string | null): Promise<{ conversationId: string; name: string; providerId: string | null }> {
+export async function createConversation(
+  name: string,
+  providerId?: string | null
+): Promise<{ conversationId: string; name: string; providerId: string | null; botName?: string | null }> {
   const res = await fetch('/api/conversations', {
     method: 'POST',
     headers: JSON_HEADERS,
@@ -34,7 +37,10 @@ export async function createConversation(name: string, providerId?: string | nul
   return res.json();
 }
 
-export async function updateConversation(id: string, patch: { providerId?: string | null }): Promise<Conversation> {
+export async function updateConversation(
+  id: string,
+  patch: { providerId?: string | null; botName?: string | null }
+): Promise<Conversation> {
   const res = await fetch(`/api/conversations/${id}`, {
     method: 'PATCH',
     headers: JSON_HEADERS,
@@ -118,4 +124,18 @@ export function sendMessageStream(
 
 export async function deleteConversation(id: string): Promise<void> {
   await fetch(`/api/conversations/${id}`, { method: 'DELETE' });
+}
+
+export async function fetchBots(): Promise<Bot[]> {
+  const res = await fetch('/api/bots');
+  return res.json();
+}
+
+export async function createBot(req: CreateBotRequest): Promise<Bot> {
+  const res = await fetch('/api/bots', {
+    method: 'POST',
+    headers: JSON_HEADERS,
+    body: JSON.stringify(req),
+  });
+  return res.json();
 }

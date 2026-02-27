@@ -8,6 +8,7 @@ export interface Conversation {
   id: string;
   name: string;
   providerId: string | null;
+  botName?: string | null;
   messages: ChatMessage[];
   parentConversationId?: string | null;
   createdAtMillis?: number | null;
@@ -27,4 +28,13 @@ export interface CreateProviderRequest {
   apiKey: string;
   baseUrl?: string;
   model?: string;
+}
+
+export interface Bot {
+  name: string;
+}
+
+export interface CreateBotRequest {
+  name: string;
+  soul: string;
 }

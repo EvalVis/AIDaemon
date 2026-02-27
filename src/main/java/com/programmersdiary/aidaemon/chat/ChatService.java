@@ -2,6 +2,7 @@ package com.programmersdiary.aidaemon.chat;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.programmersdiary.aidaemon.bot.BotService;
 import com.programmersdiary.aidaemon.delegation.DelegationTools;
 import com.programmersdiary.aidaemon.mcp.McpService;
 import com.programmersdiary.aidaemon.provider.ChatModelFactory;
@@ -48,6 +49,7 @@ public class ChatService {
     private final ShellAccessService shellAccessService;
     private final McpService mcpService;
     private final ConversationRepository conversationRepository;
+    private final BotService botService;
     private final String systemInstructions;
     private final boolean delegationEnabled;
     private final int charsContextWindow;
@@ -61,6 +63,7 @@ public class ChatService {
                        ShellAccessService shellAccessService,
                        McpService mcpService,
                        ConversationRepository conversationRepository,
+                       BotService botService,
                        @Autowired(required = false) SmitheryMcpTool smitheryMcpTool,
                        @Value("${aidaemon.system-instructions:}") String systemInstructions,
                        @Value("${aidaemon.delegation-enabled:false}") boolean delegationEnabled,
@@ -73,6 +76,7 @@ public class ChatService {
         this.shellAccessService = shellAccessService;
         this.mcpService = mcpService;
         this.conversationRepository = conversationRepository;
+        this.botService = botService;
         this.smitheryMcpTool = smitheryMcpTool;
         this.systemInstructions = systemInstructions
                 .replace("{threshold}", String.valueOf(delegationThresholdSeconds));
@@ -82,17 +86,27 @@ public class ChatService {
     }
 
     public ChatResult streamAndCollect(String providerId, List<ChatMessage> messages) {
-        return streamAndCollect(providerId, messages, null);
+        return streamAndCollect(providerId, messages, null, null);
     }
 
     public ChatResult streamAndCollect(String providerId, List<ChatMessage> messages, String conversationId) {
+        return streamAndCollect(providerId, messages, conversationId, null);
+    }
+
+    public ChatResult streamAndCollect(String providerId, List<ChatMessage> messages, String conversationId, String botName) {
         var resultRef = new AtomicReference<ChatResult>();
-        stream(providerId, messages, conversationId, resultRef::set).blockLast();
+        stream(providerId, messages, conversationId, resultRef::set, botName).blockLast();
         return resultRef.get();
     }
 
     public Flux<StreamChunk> stream(String providerId, List<ChatMessage> messages, String conversationId,
                                    Consumer<ChatResult> onComplete) {
+        return stream(providerId, messages, conversationId, onComplete, null);
+    }
+
+    public Flux<StreamChunk> stream(String providerId, List<ChatMessage> messages, String conversationId,
+                                   Consumer<ChatResult> onComplete,
+                                   String botName) {
         var config = configRepository.findById(providerId)
                 .orElseThrow(() -> new IllegalArgumentException("Provider not found: " + providerId));
 
@@ -113,7 +127,7 @@ public class ChatService {
                 callbacks.forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog, serverName, onToolChunk))));
 
         final DelegationTools delegationTools = (delegationEnabled && conversationId != null)
-                ? new DelegationTools(conversationRepository, conversationId, providerId)
+                ? new DelegationTools(conversationRepository, conversationId, providerId, botName)
                 : null;
         if (delegationTools != null) {
             Arrays.asList(ToolCallbacks.from(delegationTools))
@@ -132,7 +146,7 @@ public class ChatService {
         final StringBuilder reasoningAccum = new StringBuilder();
         final var orderedChunks = new ArrayList<StreamChunk>();
 
-        var contentStream = streamingModel.stream(buildPrompt(messages, promptOptions))
+        var contentStream = streamingModel.stream(buildPrompt(messages, promptOptions, botName))
                 .flatMap(response -> {
                     var c = toStreamChunk(response);
                     return c != null ? Flux.just(c) : Flux.empty();
@@ -225,12 +239,16 @@ public class ChatService {
         return Map.of("cache_control", Map.of("type", "ephemeral"));
     }
 
-    private Prompt buildPrompt(List<ChatMessage> messages, ChatOptions promptOptions) {
+    private Prompt buildPrompt(List<ChatMessage> messages, ChatOptions promptOptions, String botName) {
         var springMessages = new ArrayList<Message>();
         springMessages
         .add(SystemMessage.builder().text(systemInstructions)
         .metadata(cacheControl())
         .build());
+        var soul = botService.loadSoul(botName);
+        if (soul != null && !soul.isBlank()) {
+            springMessages.add(new SystemMessage(soul));
+        }
         springMessages.addAll(memoryMessages());
         var filtered = messages
             .stream()

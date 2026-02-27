@@ -54,7 +54,7 @@ public class DelegationService {
             log.info("Executing sub-agent for '{}' ({})", sub.name(), subConversationId);
 
             var result = chatServiceProvider.getObject()
-                    .streamAndCollect(sub.providerId(), sub.messages(), subConversationId);
+                    .streamAndCollect(sub.providerId(), sub.messages(), subConversationId, sub.botName());
             addAssistantResult(sub.messages(), result);
             conversationRepository.save(sub);
 
@@ -98,7 +98,7 @@ public class DelegationService {
             var messagesForCall = new ArrayList<>(parent.messages());
             messagesForCall.add(ChatMessage.of("user", buildStatusMessage(subs, allComplete)));
             var result = chatServiceProvider.getObject()
-                    .streamAndCollect(parent.providerId(), messagesForCall, parentId);
+                    .streamAndCollect(parent.providerId(), messagesForCall, parentId, parent.botName());
             addAssistantResult(parent.messages(), result);
             conversationRepository.save(parent);
 

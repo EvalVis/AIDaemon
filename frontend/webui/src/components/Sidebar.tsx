@@ -1,14 +1,16 @@
 import { useState } from 'react';
-import type { Conversation, CreateProviderRequest, Provider } from '../types';
+import type { Bot, Conversation, CreateBotRequest, CreateProviderRequest, Provider } from '../types';
 
 interface SidebarProps {
   providers: Provider[];
+  bots: Bot[];
   conversations: Conversation[];
   activeId: string | null;
   onSelectConversation: (id: string) => void;
   onCreateConversation: (name: string, providerId?: string | null) => void;
   onDeleteConversation: (id: string) => void;
   onAddProvider: (req: CreateProviderRequest) => void;
+  onAddBot: (req: CreateBotRequest) => void;
 }
 
 type TreeNode = Conversation & { children: TreeNode[] };
@@ -66,14 +68,17 @@ function hasActiveDescendant(node: TreeNode, activeId: string | null): boolean {
 
 export default function Sidebar({
   providers,
+  bots,
   conversations,
   activeId,
   onSelectConversation,
   onCreateConversation,
   onDeleteConversation,
   onAddProvider,
+  onAddBot,
 }: SidebarProps) {
   const [showProviderForm, setShowProviderForm] = useState(false);
+  const [showBotForm, setShowBotForm] = useState(false);
   const [showNewConv, setShowNewConv] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -185,6 +190,12 @@ export default function Sidebar({
         onToggle={() => setShowProviderForm(!showProviderForm)}
         providers={providers}
         onAdd={onAddProvider}
+      />
+      <BotButton
+        show={showBotForm}
+        onToggle={() => setShowBotForm(!showBotForm)}
+        bots={bots}
+        onAdd={onAddBot}
       />
 
       <div className="p-3 border-b border-border">
@@ -313,6 +324,74 @@ function ProviderButton({
           {providers.map((p) => (
             <span key={p.id} className="text-xs text-text-dim bg-bg-input py-0.5 px-2 rounded-xl">
               {p.name} ({p.model})
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BotButton({
+  show,
+  onToggle,
+  bots,
+  onAdd,
+}: {
+  show: boolean;
+  onToggle: () => void;
+  bots: Bot[];
+  onAdd: (req: CreateBotRequest) => void;
+}) {
+  const [name, setName] = useState('');
+  const [soul, setSoul] = useState('');
+
+  const handleSubmit = () => {
+    const trimmedName = name.trim();
+    const trimmedSoul = soul.trim();
+    if (!trimmedName || !trimmedSoul) return;
+    onAdd({ name: trimmedName, soul: trimmedSoul });
+    setName('');
+    setSoul('');
+    onToggle();
+  };
+
+  return (
+    <div className="p-3 border-b border-border">
+      <button
+        className="w-full py-2 px-3 bg-bg-input text-text-bright border border-border rounded-lg cursor-pointer text-sm transition-colors duration-150 hover:bg-bg-hover"
+        onClick={onToggle}
+      >
+        {show ? 'Cancel' : '+ Add Bot'}
+      </button>
+      {show && (
+        <div className="flex flex-col gap-1.5 mt-2">
+          <input
+            placeholder="Bot name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="p-1.5 px-2.5 bg-bg-input text-text border border-border rounded-lg text-[0.8125rem] outline-none focus:border-accent"
+          />
+          <textarea
+            placeholder="Bot soul description (SOUL.md)"
+            value={soul}
+            onChange={(e) => setSoul(e.target.value)}
+            rows={4}
+            className="p-1.5 px-2.5 bg-bg-input text-text border border-border rounded-lg text-[0.8125rem] outline-none focus:border-accent resize-y"
+          />
+          <button
+            className="py-1.5 px-3 bg-accent text-white border-0 rounded-lg cursor-pointer text-[0.8125rem] transition-colors duration-150 hover:bg-accent-hover"
+            onClick={handleSubmit}
+          >
+            Create bot
+          </button>
+        </div>
+      )}
+      {bots.length > 0 && (
+        <div className="flex flex-wrap gap-1 mt-2">
+          {bots.map((b) => (
+            <span key={b.name} className="text-xs text-text-dim bg-bg-input py-0.5 px-2 rounded-xl">
+              {b.name}
             </span>
           ))}
         </div>

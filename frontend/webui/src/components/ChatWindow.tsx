@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { ChatMessage, Conversation, Provider } from '../types';
+import type { Bot, ChatMessage, Conversation, Provider } from '../types';
 import type { StreamingContent, StreamPart } from '../App';
 
 type DisplayMessage = ChatMessage | { role: 'assistant'; parts: StreamPart[] };
@@ -7,6 +7,7 @@ type DisplayMessage = ChatMessage | { role: 'assistant'; parts: StreamPart[] };
 interface ChatWindowProps {
   conversation: Conversation | null;
   providers: Provider[];
+  bots: Bot[];
   sending: boolean;
   streaming: StreamingContent | null;
   lastStreamedContent: { reasoning: string; parts: StreamPart[] } | null;
@@ -14,6 +15,7 @@ interface ChatWindowProps {
   onInputDraftChange: (value: string) => void;
   onSend: (message: string) => void;
   onUpdateProvider: (conversationId: string, providerId: string | null) => void;
+  onUpdateBot: (conversationId: string, botName: string | null) => void;
 }
 
 const PREVIEW_LENGTH = 120;
@@ -148,7 +150,19 @@ function getDisplayMessages(
   return list;
 }
 
-export default function ChatWindow({ conversation, providers, sending, streaming, lastStreamedContent, inputDraft, onInputDraftChange, onSend, onUpdateProvider }: ChatWindowProps) {
+export default function ChatWindow({
+  conversation,
+  providers,
+  bots,
+  sending,
+  streaming,
+  lastStreamedContent,
+  inputDraft,
+  onInputDraftChange,
+  onSend,
+  onUpdateProvider,
+  onUpdateBot,
+}: ChatWindowProps) {
   const [hideToolsAndThinking, setHideToolsAndThinking] = useState(false);
   const messagesRef = useRef<HTMLDivElement>(null);
   const topRef = useRef<HTMLDivElement>(null);
@@ -287,6 +301,16 @@ export default function ChatWindow({ conversation, providers, sending, streaming
             <option value="">Select agent…</option>
             {providers.map((p) => (
               <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+          <select
+            value={conversation.botName ?? 'default'}
+            onChange={(e) => onUpdateBot(conversation.id, e.target.value === 'default' ? null : e.target.value)}
+            className="py-1.5 px-2.5 bg-bg-input text-text border border-border rounded-lg text-[0.8125rem] outline-none focus:border-accent min-w-[140px]"
+          >
+            <option value="default">default</option>
+            {bots.map((b) => (
+              <option key={b.name} value={b.name}>{b.name}</option>
             ))}
           </select>
           {!hasProvider && (
