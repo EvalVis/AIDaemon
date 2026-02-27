@@ -277,7 +277,7 @@ public class ChatService {
             .toList();
         var history = filtered.subList(0, filtered.size() - 1);
         if (!history.isEmpty()) {
-            var trimmed = trimToContextWindow(history, conversationLimit);
+            var trimmed = ContextWindowTrimmer.trimToLimit(history, conversationLimit);
             int firstInContext = history.size() - trimmed.size();
             springMessages.add(new SystemMessage(
                 "This conversation has " + filtered.size() + " messages. "
@@ -333,22 +333,6 @@ public class ChatService {
             result.add(toCachedSpringMessage(trimmedHistory.getLast()));
         }
         return result;
-    }
-
-    private static List<ChatMessage> trimToContextWindow(List<ChatMessage> history, int limit) {
-        int total = 0;
-        int start = history.size();
-        for (int i = history.size() - 1; i >= 0; i--) {
-            int len = (history.get(i).content() != null)
-                ? history.get(i).content().length()
-                : 0;
-            if (total + len > limit) {
-                break;
-            }
-            total += len;
-            start = i;
-        }
-        return history.subList(start, history.size());
     }
 
     private Message toNotCachedSpringMessage(ChatMessage message) {

@@ -2,6 +2,7 @@ package com.programmersdiary.aidaemon.bot;
 
 import com.programmersdiary.aidaemon.chat.ChatMessage;
 import com.programmersdiary.aidaemon.chat.ChatResult;
+import com.programmersdiary.aidaemon.chat.ContextWindowTrimmer;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -57,19 +58,7 @@ public class BotService {
         }
         var entries = repository.loadPersonalMemory(name);
         if (entries.isEmpty()) return List.of();
-        return trimFromStart(entries, maxChars);
-    }
-
-    private static List<PersonalMemoryEntry> trimFromStart(List<PersonalMemoryEntry> entries, int maxChars) {
-        int total = 0;
-        int start = entries.size();
-        for (int i = entries.size() - 1; i >= 0; i--) {
-            int len = entries.get(i).content() != null ? entries.get(i).content().length() : 0;
-            if (total + len > maxChars) break;
-            total += len;
-            start = i;
-        }
-        return entries.subList(start, entries.size());
+        return ContextWindowTrimmer.trimToLimit(entries, maxChars);
     }
 
     public void appendTurnToPersonalMemory(String botName, String userContent,
