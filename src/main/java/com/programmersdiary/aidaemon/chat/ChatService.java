@@ -3,6 +3,7 @@ package com.programmersdiary.aidaemon.chat;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.programmersdiary.aidaemon.bot.BotService;
+import com.programmersdiary.aidaemon.bot.PersonalMemoryEntry;
 import com.programmersdiary.aidaemon.delegation.DelegationTools;
 import com.programmersdiary.aidaemon.mcp.McpService;
 import com.programmersdiary.aidaemon.provider.ChatModelFactory;
@@ -262,10 +263,11 @@ public class ChatService {
             springMessages.add(new SystemMessage(soul));
         }
         if (personalMemoryLimit > 0) {
-            var personalMemory = botService.loadPersonalMemoryTrimmed(botName, personalMemoryLimit);
-            if (personalMemory != null && !personalMemory.isBlank()) {
+            var personalEntries = botService.loadPersonalMemoryTrimmed(botName, personalMemoryLimit);
+            if (!personalEntries.isEmpty()) {
                 springMessages.add(new SystemMessage(
-                    "Your context includes personal memory (recent interactions across conversations), limited to " + personalMemoryLimit + " characters.\n\n" + personalMemory));
+                    "Personal memory (recent interactions across conversations), limited to " + personalMemoryLimit + " characters. Use retrieve_older_messages for conversation history."));
+                springMessages.addAll(personalMemoryToMessages(personalEntries));
             }
         }
         springMessages.addAll(memoryMessages());
@@ -302,6 +304,25 @@ public class ChatService {
             .metadata(cacheControl())
             .build()
         );
+        return result;
+    }
+
+    private List<Message> personalMemoryToMessages(List<PersonalMemoryEntry> entries) {
+        var result = new ArrayList<Message>();
+        for (int i = 0; i < entries.size(); i++) {
+            var e = entries.get(i);
+            var content = e.content() != null ? e.content() : "";
+            var isLast = i == entries.size() - 1;
+            switch (e.role().toLowerCase()) {
+                case "user" -> result.add(isLast
+                    ? UserMessage.builder().text(content).metadata(cacheControl()).build()
+                    : new UserMessage(content));
+                case "assistant" -> result.add(isLast
+                    ? AssistantMessage.builder().content(content).properties(cacheControl()).build()
+                    : new AssistantMessage(content));
+                default -> result.add(new SystemMessage("[Tool] " + content));
+            }
+        }
         return result;
     }
 

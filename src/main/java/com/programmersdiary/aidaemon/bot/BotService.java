@@ -48,22 +48,16 @@ public class BotService {
         return repository.loadSoul(name);
     }
 
-    public String loadPersonalMemoryTrimmed(String name, int maxChars) {
+    public List<PersonalMemoryEntry> loadPersonalMemoryTrimmed(String name, int maxChars) {
         if (name == null || name.isBlank() || "default".equalsIgnoreCase(name) || maxChars <= 0) {
-            return null;
+            return List.of();
         }
         if (!repository.exists(name)) {
-            return null;
+            return List.of();
         }
         var entries = repository.loadPersonalMemory(name);
-        if (entries.isEmpty()) return null;
-        var trimmed = trimFromStart(entries, maxChars);
-        var sb = new StringBuilder();
-        sb.append("Personal memory (recent interactions across conversations):\n\n");
-        for (var e : trimmed) {
-            sb.append(e.role().toUpperCase()).append(": ").append(e.content()).append("\n\n");
-        }
-        return sb.toString().trim();
+        if (entries.isEmpty()) return List.of();
+        return trimFromStart(entries, maxChars);
     }
 
     private static List<PersonalMemoryEntry> trimFromStart(List<PersonalMemoryEntry> entries, int maxChars) {
