@@ -5,12 +5,14 @@ import com.programmersdiary.aidaemon.chat.ChatMessage;
 import com.programmersdiary.aidaemon.chat.ChatResult;
 import com.programmersdiary.aidaemon.chat.ChatService;
 import com.programmersdiary.aidaemon.chat.ContextConfig;
+import com.programmersdiary.aidaemon.chat.ContextWindowTrimmer;
 import com.programmersdiary.aidaemon.chat.StreamChunk;
 import com.programmersdiary.aidaemon.chat.StreamRequestMetadata;
 import com.programmersdiary.aidaemon.skills.SkillsService;
 import org.springframework.ai.chat.messages.Message;
 import reactor.core.publisher.Flux;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 
@@ -64,23 +66,21 @@ public class Bot {
         return new StreamRequestMetadata(messages, conversationId, name, contextConfig.conversationLimit(isNamed()));
     }
 
-    public void appendToPersonalMemory(String userContent, String assistantContent) {
-        botService.appendTurnToPersonalMemory(name, userContent, assistantContent);
+    public void appendToPersonalMemory(List<ChatMessage> contextConversation, String assistantContent) {
+        botService.appendTurnToPersonalMemory(name, contextConversation, assistantContent);
     }
 
     private void appendToPersonalMemoryAfterChat(List<ChatMessage> messages, ChatResult result) {
-        appendToPersonalMemory(lastUserContent(messages), result.assistantContent());
-    }
-
-    private static String lastUserContent(List<ChatMessage> messages) {
-        if (messages == null || messages.isEmpty()) return "";
-        for (int i = messages.size() - 1; i >= 0; i--) {
-            if ("user".equals(messages.get(i).role())) {
-                var c = messages.get(i).content();
-                return c != null ? c : "";
-            }
+        var filtered = messages.stream().filter(m -> !"tool".equals(m.role())).toList();
+        if (filtered.isEmpty()) return;
+        var history = filtered.subList(0, filtered.size() - 1);
+        var convLimit = contextConfig.conversationLimit(isNamed());
+        var contextConversation = new ArrayList<ChatMessage>();
+        if (!history.isEmpty()) {
+            contextConversation.addAll(ContextWindowTrimmer.trimChatHistory(history, convLimit));
         }
-        return "";
+        contextConversation.add(filtered.get(filtered.size() - 1));
+        appendToPersonalMemory(contextConversation, result.assistantContent());
     }
 
     private boolean isNamed() {

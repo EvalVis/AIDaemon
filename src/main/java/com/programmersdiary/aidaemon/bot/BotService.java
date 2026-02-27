@@ -73,13 +73,18 @@ public class BotService {
         return ContextWindowTrimmer.trimPersonalMemory(entries, maxChars);
     }
 
-    public void appendTurnToPersonalMemory(String botName, String userContent, String assistantContent) {
+    public void appendTurnToPersonalMemory(String botName, List<ChatMessage> contextConversation, String assistantContent) {
         if (botName == null || botName.isBlank() || "default".equalsIgnoreCase(botName)) {
             return;
         }
         if (!repository.exists(botName)) return;
         var entries = new ArrayList<PersonalMemoryEntry>();
-        entries.add(new PersonalMemoryEntry("user", userContent != null ? userContent : ""));
+        if (contextConversation != null) {
+            for (var m : contextConversation) {
+                if ("system".equals(m.role())) continue;
+                entries.add(new PersonalMemoryEntry(m.role(), m.content() != null ? m.content() : ""));
+            }
+        }
         entries.add(new PersonalMemoryEntry("assistant", assistantContent != null ? assistantContent : ""));
         repository.appendToPersonalMemory(botName, entries);
     }
