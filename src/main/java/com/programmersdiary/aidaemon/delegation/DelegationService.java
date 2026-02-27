@@ -8,6 +8,10 @@ import com.programmersdiary.aidaemon.chat.ChatService;
 import com.programmersdiary.aidaemon.chat.Conversation;
 import com.programmersdiary.aidaemon.chat.ConversationRepository;
 import com.programmersdiary.aidaemon.chat.StreamChunk;
+import com.programmersdiary.aidaemon.chat.StreamRequestMetadata;
+import com.programmersdiary.aidaemon.chat.ChatContextBuilder;
+import com.programmersdiary.aidaemon.chat.ContextConfig;
+import org.springframework.ai.chat.messages.Message;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,13 +36,19 @@ public class DelegationService {
 
     private final ConversationRepository conversationRepository;
     private final ObjectProvider<ChatService> chatServiceProvider;
+    private final ChatContextBuilder contextBuilder;
+    private final ContextConfig contextConfig;
     private final ExecutorService executor = Executors.newCachedThreadPool();
     private final Map<String, ReentrantLock> parentLocks = new ConcurrentHashMap<>();
 
     public DelegationService(ConversationRepository conversationRepository,
-                             ObjectProvider<ChatService> chatServiceProvider) {
+                             ObjectProvider<ChatService> chatServiceProvider,
+                             ChatContextBuilder contextBuilder,
+                             ContextConfig contextConfig) {
         this.conversationRepository = conversationRepository;
         this.chatServiceProvider = chatServiceProvider;
+        this.contextBuilder = contextBuilder;
+        this.contextConfig = contextConfig;
     }
 
     public void startSubAgents(List<String> pendingSubConversationIds) {
@@ -54,7 +64,7 @@ public class DelegationService {
             log.info("Executing sub-agent for '{}' ({})", sub.name(), subConversationId);
 
             var result = chatServiceProvider.getObject()
-                    .streamAndCollect(sub.providerId(), sub.messages(), subConversationId, sub.botName());
+                    .streamAndCollect(sub.providerId(), buildContext(sub), buildMeta(sub));
             addAssistantResult(sub.messages(), result);
             conversationRepository.save(sub);
 
@@ -98,7 +108,7 @@ public class DelegationService {
             var messagesForCall = new ArrayList<>(parent.messages());
             messagesForCall.add(ChatMessage.of("user", buildStatusMessage(subs, allComplete)));
             var result = chatServiceProvider.getObject()
-                    .streamAndCollect(parent.providerId(), messagesForCall, parentId, parent.botName());
+                    .streamAndCollect(parent.providerId(), buildContext(parent, messagesForCall), buildMeta(parent, messagesForCall));
             addAssistantResult(parent.messages(), result);
             conversationRepository.save(parent);
 
@@ -126,6 +136,30 @@ public class DelegationService {
         } else {
             messages.add(ChatMessage.of("assistant", result.response()));
         }
+    }
+
+    private List<Message> buildContext(Conversation conv) {
+        var namedBot = conv.botName() != null && !conv.botName().isBlank() && !"default".equalsIgnoreCase(conv.botName());
+        var convLimit = contextConfig.conversationLimit(namedBot);
+        var personalLimit = contextConfig.personalMemoryLimit(namedBot);
+        return contextBuilder.buildMessages(conv.messages(), conv.botName(), convLimit, personalLimit, contextConfig.systemInstructions());
+    }
+
+    private List<Message> buildContext(Conversation conv, List<ChatMessage> messages) {
+        var namedBot = conv.botName() != null && !conv.botName().isBlank() && !"default".equalsIgnoreCase(conv.botName());
+        var convLimit = contextConfig.conversationLimit(namedBot);
+        var personalLimit = contextConfig.personalMemoryLimit(namedBot);
+        return contextBuilder.buildMessages(messages, conv.botName(), convLimit, personalLimit, contextConfig.systemInstructions());
+    }
+
+    private StreamRequestMetadata buildMeta(Conversation conv) {
+        var namedBot = conv.botName() != null && !conv.botName().isBlank() && !"default".equalsIgnoreCase(conv.botName());
+        return new StreamRequestMetadata(conv.messages(), conv.id(), conv.botName(), contextConfig.conversationLimit(namedBot));
+    }
+
+    private StreamRequestMetadata buildMeta(Conversation conv, List<ChatMessage> messages) {
+        var namedBot = conv.botName() != null && !conv.botName().isBlank() && !"default".equalsIgnoreCase(conv.botName());
+        return new StreamRequestMetadata(messages, conv.id(), conv.botName(), contextConfig.conversationLimit(namedBot));
     }
 
     private static String toPartsJson(List<StreamChunk> orderedParts) {

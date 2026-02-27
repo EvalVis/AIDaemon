@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.programmersdiary.aidaemon.bot.BotService;
 import com.programmersdiary.aidaemon.delegation.DelegationService;
+import org.springframework.ai.chat.messages.Message;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
@@ -22,15 +23,21 @@ public class ConversationService {
     private final ConversationRepository conversationRepository;
     private final ObjectProvider<DelegationService> delegationServiceProvider;
     private final BotService botService;
+    private final ChatContextBuilder contextBuilder;
+    private final ContextConfig contextConfig;
 
     public ConversationService(ChatService chatService,
                                ConversationRepository conversationRepository,
                                ObjectProvider<DelegationService> delegationServiceProvider,
-                               BotService botService) {
+                               BotService botService,
+                               ChatContextBuilder contextBuilder,
+                               ContextConfig contextConfig) {
         this.chatService = chatService;
         this.conversationRepository = conversationRepository;
         this.delegationServiceProvider = delegationServiceProvider;
         this.botService = botService;
+        this.contextBuilder = contextBuilder;
+        this.contextConfig = contextConfig;
     }
 
     public Conversation create(String name, String providerId) {
@@ -67,8 +74,12 @@ public class ConversationService {
             throw new IllegalArgumentException("No agent selected for this conversation");
         }
         conversation.messages().add(ChatMessage.of("user", userMessage));
-        var result = chatService.streamAndCollect(
-                conversation.providerId(), conversation.messages(), conversationId, conversation.botName());
+        var namedBot = conversation.botName() != null && !conversation.botName().isBlank() && !"default".equalsIgnoreCase(conversation.botName());
+        var meta = new StreamRequestMetadata(conversation.messages(), conversationId, conversation.botName(),
+                contextConfig.conversationLimit(namedBot));
+        var contextMessages = contextBuilder.buildMessages(conversation.messages(), conversation.botName(),
+                meta.conversationLimit(), contextConfig.personalMemoryLimit(namedBot), contextConfig.systemInstructions());
+        var result = chatService.streamAndCollect(conversation.providerId(), contextMessages, meta);
         if (result.orderedParts() != null && !result.orderedParts().isEmpty()) {
             conversation.messages().add(ChatMessage.of("assistant", toPartsJson(result.orderedParts())));
         } else {
@@ -97,7 +108,13 @@ public class ConversationService {
         conversation.messages().add(ChatMessage.of("user", userMessage));
         conversationRepository.save(conversation);
 
-        return chatService.stream(conversation.providerId(), conversation.messages(), conversationId, result -> {
+        var namedBot = conversation.botName() != null && !conversation.botName().isBlank() && !"default".equalsIgnoreCase(conversation.botName());
+        var meta = new StreamRequestMetadata(conversation.messages(), conversationId, conversation.botName(),
+                contextConfig.conversationLimit(namedBot));
+        var contextMessages = contextBuilder.buildMessages(conversation.messages(), conversation.botName(),
+                meta.conversationLimit(), contextConfig.personalMemoryLimit(namedBot), contextConfig.systemInstructions());
+
+        return chatService.stream(conversation.providerId(), contextMessages, meta, result -> {
             if (result.orderedParts() != null && !result.orderedParts().isEmpty()) {
                 conversation.messages().add(ChatMessage.of("assistant", toPartsJson(result.orderedParts())));
             } else {
@@ -111,7 +128,7 @@ public class ConversationService {
                 }
             }
             botService.appendTurnToPersonalMemory(conversation.botName(), userMessage, result.toolMessages(), result.response());
-        }, conversation.botName());
+        });
     }
 
     public Conversation get(String conversationId) {

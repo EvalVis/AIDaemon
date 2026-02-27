@@ -1,6 +1,5 @@
 package com.programmersdiary.aidaemon.chat;
 
-import com.programmersdiary.aidaemon.bot.BotService;
 import com.programmersdiary.aidaemon.delegation.DelegationTools;
 import com.programmersdiary.aidaemon.mcp.McpService;
 import com.programmersdiary.aidaemon.provider.ChatModelFactory;
@@ -27,9 +26,9 @@ import reactor.core.publisher.Sinks;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+
 @Service
 public class ChatService {
 
@@ -43,12 +42,7 @@ public class ChatService {
     private final ShellAccessService shellAccessService;
     private final McpService mcpService;
     private final ConversationRepository conversationRepository;
-    private final BotService botService;
-    private final ChatContextBuilder contextBuilder;
-    private final String systemInstructions;
     private final boolean delegationEnabled;
-    private final int charsLimit;
-    private final double personalMemoryRatio;
     private final SmitheryMcpTool smitheryMcpTool;
 
     public ChatService(ProviderConfigRepository configRepository,
@@ -58,14 +52,8 @@ public class ChatService {
                        ShellAccessService shellAccessService,
                        McpService mcpService,
                        ConversationRepository conversationRepository,
-                       BotService botService,
-                       ChatContextBuilder contextBuilder,
                        @Autowired(required = false) SmitheryMcpTool smitheryMcpTool,
-                       @Value("${aidaemon.system-instructions:}") String systemInstructions,
-                       @Value("${aidaemon.delegation-enabled:false}") boolean delegationEnabled,
-                       @Value("${aidaemon.delegation-threshold-seconds:30}") int delegationThresholdSeconds,
-                       @Value("${aidaemon.context-window.chars-limit:${aidaemon.chars-context-window:0}}") int charsLimit,
-                       @Value("${aidaemon.context-window.personal-memory-ratio:0}") double personalMemoryRatio) {
+                       @Value("${aidaemon.delegation-enabled:false}") boolean delegationEnabled) {
         this.configRepository = configRepository;
         this.chatModelFactory = chatModelFactory;
         this.skillsService = skillsService;
@@ -73,55 +61,27 @@ public class ChatService {
         this.shellAccessService = shellAccessService;
         this.mcpService = mcpService;
         this.conversationRepository = conversationRepository;
-        this.botService = botService;
-        this.contextBuilder = contextBuilder;
         this.smitheryMcpTool = smitheryMcpTool;
-        this.systemInstructions = systemInstructions
-                .replace("{threshold}", String.valueOf(delegationThresholdSeconds));
         this.delegationEnabled = delegationEnabled;
-        this.charsLimit = charsLimit;
-        this.personalMemoryRatio = Math.max(0, Math.min(1, personalMemoryRatio));
     }
 
-    public ChatResult streamAndCollect(String providerId, List<ChatMessage> messages) {
-        return streamAndCollect(providerId, messages, null, null);
-    }
-
-    public ChatResult streamAndCollect(String providerId, List<ChatMessage> messages, String conversationId) {
-        return streamAndCollect(providerId, messages, conversationId, null);
-    }
-
-    public ChatResult streamAndCollect(String providerId, List<ChatMessage> messages, String conversationId, String botName) {
+    public ChatResult streamAndCollect(String providerId, List<Message> contextMessages, StreamRequestMetadata meta) {
         var resultRef = new AtomicReference<ChatResult>();
-        stream(providerId, messages, conversationId, resultRef::set, botName).blockLast();
+        stream(providerId, contextMessages, meta, resultRef::set).blockLast();
         return resultRef.get();
     }
 
-    public Flux<StreamChunk> stream(String providerId, List<ChatMessage> messages, String conversationId,
+    public Flux<StreamChunk> stream(String providerId, List<Message> contextMessages, StreamRequestMetadata meta,
                                    Consumer<ChatResult> onComplete) {
-        return stream(providerId, messages, conversationId, onComplete, null);
-    }
-
-    public Flux<StreamChunk> stream(String providerId, List<ChatMessage> messages, String conversationId,
-                                   Consumer<ChatResult> onComplete,
-                                   String botName) {
         var config = configRepository.findById(providerId)
                 .orElseThrow(() -> new IllegalArgumentException("Provider not found: " + providerId));
 
-        var namedBot = botName != null && !botName.isBlank() && !"default".equalsIgnoreCase(botName);
-        var conversationLimit = charsLimit;
-        var personalMemoryLimit = 0;
-        if (namedBot) {
-            conversationLimit = (int) (charsLimit * (1 - personalMemoryRatio));
-            personalMemoryLimit = (int) (charsLimit * personalMemoryRatio);
-        }
-
-        var filtered = messages.stream().filter(m -> !"tool".equals(m.role())).toList();
+        var filtered = meta.messages().stream().filter(m -> !"tool".equals(m.role())).toList();
         final var toolLog = new ArrayList<ChatMessage>();
         var sink = Sinks.many().unicast().<StreamChunk>onBackpressureBuffer();
         var onToolChunk = (Consumer<StreamChunk>) c -> sink.tryEmitNext(c);
         var loggingTools = new ArrayList<ToolCallback>();
-        Arrays.asList(ToolCallbacks.from(new ChatTools(skillsService, jobExecutor, providerId, filtered, conversationLimit)))
+        Arrays.asList(ToolCallbacks.from(new ChatTools(skillsService, jobExecutor, providerId, filtered, meta.conversationLimit())))
                 .forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog, null, onToolChunk)));
         Arrays.asList(ToolCallbacks.from(new ShellTool(shellAccessService)))
                 .forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog, null, onToolChunk)));
@@ -132,8 +92,8 @@ public class ChatService {
         mcpService.getToolCallbacksByServer().forEach((serverName, callbacks) ->
                 callbacks.forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog, serverName, onToolChunk))));
 
-        final DelegationTools delegationTools = (delegationEnabled && conversationId != null)
-                ? new DelegationTools(conversationRepository, conversationId, providerId, botName)
+        final DelegationTools delegationTools = (delegationEnabled && meta.conversationId() != null)
+                ? new DelegationTools(conversationRepository, meta.conversationId(), providerId, meta.botName())
                 : null;
         if (delegationTools != null) {
             Arrays.asList(ToolCallbacks.from(delegationTools))
@@ -151,8 +111,9 @@ public class ChatService {
         final StringBuilder contentAccum = new StringBuilder();
         final StringBuilder reasoningAccum = new StringBuilder();
         final var orderedChunks = new ArrayList<StreamChunk>();
+        var prompt = promptOptions != null ? new Prompt(contextMessages, promptOptions) : new Prompt(contextMessages);
 
-        var contentStream = streamingModel.stream(buildPrompt(messages, promptOptions, botName, conversationLimit, personalMemoryLimit))
+        var contentStream = streamingModel.stream(prompt)
                 .flatMap(response -> {
                     var c = toStreamChunk(response);
                     return c != null ? Flux.just(c) : Flux.empty();
@@ -239,13 +200,5 @@ public class ChatService {
         }
         var text = output.getText();
         return new StreamChunk(StreamChunk.TYPE_ANSWER, text != null ? text : "");
-    }
-
-    private Prompt buildPrompt(List<ChatMessage> messages, ChatOptions promptOptions, String botName,
-                               int conversationLimit, int personalMemoryLimit) {
-        var springMessages = contextBuilder.buildMessages(messages, botName, conversationLimit, personalMemoryLimit, systemInstructions);
-        return promptOptions != null
-                ? new Prompt(springMessages, promptOptions)
-                : new Prompt(springMessages);
     }
 }
