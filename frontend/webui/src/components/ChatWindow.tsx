@@ -177,6 +177,9 @@ export default function ChatWindow({
   }, [conversation?.messages.length, streaming?.reasoning, streaming?.parts?.length]);
 
   const hasProvider = Boolean(conversation?.providerId);
+  const isDirectChat = Boolean(
+    conversation?.participant1 != null && conversation?.participant2 != null
+  );
   const handleSend = () => {
     const trimmed = inputDraft.trim();
     if (!trimmed || sending || !hasProvider) return;
@@ -303,16 +306,18 @@ export default function ChatWindow({
               <option key={p.id} value={p.id}>{p.name}</option>
             ))}
           </select>
-          <select
-            value={conversation.botName ?? 'default'}
-            onChange={(e) => onUpdateBot(conversation.id, e.target.value === 'default' ? null : e.target.value)}
-            className="py-1.5 px-2.5 bg-bg-input text-text border border-border rounded-lg text-[0.8125rem] outline-none focus:border-accent min-w-[140px]"
-          >
-            <option value="default">default</option>
-            {bots.map((b) => (
-              <option key={b.name} value={b.name}>{b.name}</option>
-            ))}
-          </select>
+          {!isDirectChat && (
+            <select
+              value={conversation.botName ?? 'default'}
+              onChange={(e) => onUpdateBot(conversation.id, e.target.value === 'default' ? null : e.target.value)}
+              className="py-1.5 px-2.5 bg-bg-input text-text border border-border rounded-lg text-[0.8125rem] outline-none focus:border-accent min-w-[140px]"
+            >
+              <option value="default">default</option>
+              {bots.map((b) => (
+                <option key={b.name} value={b.name}>{b.name}</option>
+              ))}
+            </select>
+          )}
           {!hasProvider && (
             <span className="text-[0.6875rem] text-text-dim">Select agent to send</span>
           )}

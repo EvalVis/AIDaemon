@@ -54,6 +54,20 @@ public class ConversationRepository {
                 .toList();
     }
 
+    public List<Conversation> findByParticipant(String participant) {
+        if (participant == null) return List.of();
+        return conversations.values().stream()
+                .filter(c -> c.isDirect() && (participant.equals(c.participant1()) || participant.equals(c.participant2())))
+                .toList();
+    }
+
+    public List<Conversation> findAllForParticipant(String participant) {
+        if (participant == null) return findAll();
+        return conversations.values().stream()
+                .filter(c -> !c.isDirect() || participant.equals(c.participant1()) || participant.equals(c.participant2()))
+                .toList();
+    }
+
     public Optional<Conversation> findById(String id) {
         return Optional.ofNullable(conversations.get(id));
     }
@@ -85,6 +99,9 @@ public class ConversationRepository {
     }
 
     private String fileName(Conversation conversation) {
+        if (conversation.isDirect()) {
+            return Conversation.canonicalId(conversation.participant1(), conversation.participant2()) + ".json";
+        }
         return conversation.name() + "_" + conversation.id() + ".json";
     }
 }

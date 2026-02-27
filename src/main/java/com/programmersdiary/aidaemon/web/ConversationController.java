@@ -67,7 +67,9 @@ public class ConversationController {
                 botName,
                 conversation.messages(),
                 conversation.parentConversationId(),
-                conversation.createdAtMillis());
+                conversation.createdAtMillis(),
+                conversation.participant1(),
+                conversation.participant2());
         conversationService.save(updated);
         return updated;
     }
@@ -97,7 +99,10 @@ public class ConversationController {
     }
 
     @GetMapping
-    public List<Conversation> list() {
+    public List<Conversation> list(@RequestParam(required = false) String participant) {
+        if (participant != null && !participant.isBlank()) {
+            return conversationService.listForParticipant(participant);
+        }
         return conversationService.listAll();
     }
 
@@ -105,5 +110,18 @@ public class ConversationController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable String id) {
         conversationService.delete(id);
+    }
+
+    @GetMapping("/{id}")
+    public Conversation get(@PathVariable String id) {
+        return conversationService.get(id);
+    }
+
+    private static final String DEFAULT_USER_PARTICIPANT = "user";
+
+    @GetMapping("/direct/{botName}")
+    public Conversation getOrCreateDirect(@PathVariable String botName,
+                                         @RequestParam(required = false) String providerId) {
+        return conversationService.getOrCreateDirect(DEFAULT_USER_PARTICIPANT, botName, providerId);
     }
 }

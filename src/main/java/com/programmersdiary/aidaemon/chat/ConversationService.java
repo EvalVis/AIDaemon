@@ -36,8 +36,37 @@ public class ConversationService {
     public Conversation create(String name, String providerId, String botName, String parentConversationId) {
         var conversation = new Conversation(
                 UUID.randomUUID().toString(), name, providerId, botName, new ArrayList<>(), parentConversationId,
-                System.currentTimeMillis());
+                System.currentTimeMillis(), null, null);
         return conversationRepository.save(conversation);
+    }
+
+    public Conversation getOrCreateDirect(String userParticipantId, String botName, String providerId) {
+        if (botName == null || botName.isBlank() || "default".equalsIgnoreCase(botName)) {
+            throw new IllegalArgumentException("Direct chat requires a named bot");
+        }
+        if (!botService.listBots().stream().anyMatch(b -> botName.equals(b.name()))) {
+            throw new IllegalArgumentException("Bot not found: " + botName);
+        }
+        var id = Conversation.canonicalId(userParticipantId, botName);
+        var p1 = userParticipantId.compareTo(botName) <= 0 ? userParticipantId : botName;
+        var p2 = userParticipantId.compareTo(botName) <= 0 ? botName : userParticipantId;
+        return conversationRepository.findById(id)
+                .map(conv -> {
+                    if (providerId != null && !providerId.isBlank() && !providerId.equals(conv.providerId())) {
+                        var updated = new Conversation(conv.id(), conv.name(), providerId, conv.botName(),
+                                conv.messages(), conv.parentConversationId(), conv.createdAtMillis(),
+                                conv.participant1(), conv.participant2());
+                        conversationRepository.save(updated);
+                        return updated;
+                    }
+                    return conv;
+                })
+                .orElseGet(() -> {
+                    var name = userParticipantId + " & " + botName;
+                    var conv = new Conversation(id, name, providerId, botName, new ArrayList<>(), null,
+                            System.currentTimeMillis(), p1, p2);
+                    return conversationRepository.save(conv);
+                });
     }
 
     public Conversation updateProvider(String conversationId, String providerId) {
@@ -103,6 +132,10 @@ public class ConversationService {
 
     public List<Conversation> listAll() {
         return conversationRepository.findAll();
+    }
+
+    public List<Conversation> listForParticipant(String participantId) {
+        return conversationRepository.findAllForParticipant(participantId);
     }
 
     public void delete(String conversationId) {

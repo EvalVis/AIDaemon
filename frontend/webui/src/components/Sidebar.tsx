@@ -8,6 +8,7 @@ interface SidebarProps {
   activeId: string | null;
   onSelectConversation: (id: string) => void;
   onCreateConversation: (name: string, providerId?: string | null) => void;
+  onOpenDirectChat: (botName: string, providerId?: string | null) => void;
   onDeleteConversation: (id: string) => void;
   onAddProvider: (req: CreateProviderRequest) => void;
   onAddBot: (req: CreateBotRequest) => void;
@@ -73,6 +74,7 @@ export default function Sidebar({
   activeId,
   onSelectConversation,
   onCreateConversation,
+  onOpenDirectChat,
   onDeleteConversation,
   onAddProvider,
   onAddBot,
@@ -216,6 +218,28 @@ export default function Sidebar({
       </div>
 
       <nav className="flex-1 overflow-y-auto py-2 flex flex-col gap-4">
+        <div>
+          <h3 className="px-3 py-1.5 text-[0.6875rem] font-semibold uppercase tracking-wide text-text-dim">
+            Chat with bot
+          </h3>
+          {bots.length > 0 ? (
+            <div className="flex flex-col">
+              {bots.map((b) => (
+                <button
+                  key={b.name}
+                  type="button"
+                  className="flex items-center gap-2 px-3 py-2.5 text-left text-sm text-text-bright hover:bg-bg-hover transition-colors duration-100 cursor-pointer"
+                  onClick={() => onOpenDirectChat(b.name)}
+                >
+                  <span className="shrink-0 text-base opacity-80">💬</span>
+                  <span className="min-w-0 truncate">{b.name}</span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="px-3 py-2 text-text-dim text-[0.8125rem]">No bots. Add one above.</p>
+          )}
+        </div>
         <div>
           <h3 className="px-3 py-1.5 text-[0.6875rem] font-semibold uppercase tracking-wide text-text-dim">
             Conversations

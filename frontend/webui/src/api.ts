@@ -20,8 +20,24 @@ export async function deleteProvider(id: string): Promise<void> {
   await fetch(`/api/providers/${id}`, { method: 'DELETE' });
 }
 
-export async function fetchConversations(): Promise<Conversation[]> {
-  const res = await fetch('/api/conversations');
+export async function fetchConversations(participant?: string | null): Promise<Conversation[]> {
+  const url = participant != null && participant !== ''
+    ? `/api/conversations?participant=${encodeURIComponent(participant)}`
+    : '/api/conversations';
+  const res = await fetch(url);
+  return res.json();
+}
+
+export async function getOrCreateDirectConversation(
+  botName: string,
+  providerId?: string | null
+): Promise<Conversation> {
+  const params = providerId ? `?providerId=${encodeURIComponent(providerId)}` : '';
+  const res = await fetch(`/api/conversations/direct/${encodeURIComponent(botName)}${params}`);
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(err || res.statusText);
+  }
   return res.json();
 }
 

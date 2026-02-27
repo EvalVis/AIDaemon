@@ -12,6 +12,8 @@ export interface Conversation {
   messages: ChatMessage[];
   parentConversationId?: string | null;
   createdAtMillis?: number | null;
+  participant1?: string | null;
+  participant2?: string | null;
 }
 
 export interface Provider {

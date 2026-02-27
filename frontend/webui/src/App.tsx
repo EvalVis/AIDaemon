@@ -36,7 +36,7 @@ export default function App() {
 
   useEffect(() => {
     api.fetchProviders().then(setProviders);
-    api.fetchConversations().then(setConversations);
+    api.fetchConversations('user').then(setConversations);
     api.fetchBots().then(setBots);
   }, []);
 
@@ -68,6 +68,16 @@ export default function App() {
       messages: [],
     };
     setConversations((prev) => [...prev, conv]);
+    setActiveId(conv.id);
+  };
+
+  const handleOpenDirectChat = async (botName: string, providerId?: string | null) => {
+    const conv = await api.getOrCreateDirectConversation(botName, providerId);
+    setConversations((prev) => {
+      const exists = prev.some((c) => c.id === conv.id);
+      if (exists) return prev.map((c) => (c.id === conv.id ? conv : c));
+      return [...prev, conv];
+    });
     setActiveId(conv.id);
   };
 
@@ -147,7 +157,7 @@ export default function App() {
         setStreaming(null);
         streamingRef.current = null;
         const poll = () => {
-          api.fetchConversations().then((list) => setConversations([...list]));
+          api.fetchConversations('user').then((list) => setConversations([...list]));
         };
         poll();
         pollIntervalRef.current = setInterval(poll, 2500);
@@ -162,7 +172,7 @@ export default function App() {
         setSending(false);
         setStreaming(null);
         streamingRef.current = null;
-        api.fetchConversations().then(setConversations);
+        api.fetchConversations('user').then(setConversations);
       }
     );
   };
@@ -176,6 +186,7 @@ export default function App() {
         activeId={activeId}
         onSelectConversation={setActiveId}
         onCreateConversation={handleCreateConversation}
+        onOpenDirectChat={handleOpenDirectChat}
         onDeleteConversation={handleDeleteConversation}
         onAddProvider={handleAddProvider}
         onAddBot={handleAddBot}
