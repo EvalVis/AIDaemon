@@ -9,7 +9,7 @@ public final class ContextWindowTrimmer {
     private ContextWindowTrimmer() {
     }
 
-    public static List<ChatMessage> trimToLimit(List<ChatMessage> items, int charLimit) {
+    public static List<ChatMessage> trimChatHistory(List<ChatMessage> items, int charLimit) {
         if (items.isEmpty()) {
             return items;
         }
@@ -30,7 +30,7 @@ public final class ContextWindowTrimmer {
         return items.subList(start, items.size());
     }
 
-    public static List<PersonalMemoryEntry> trimToLimit(List<PersonalMemoryEntry> items, int charLimit) {
+    public static List<PersonalMemoryEntry> trimPersonalMemory(List<PersonalMemoryEntry> items, int charLimit) {
         if (items.isEmpty()) {
             return items;
         }

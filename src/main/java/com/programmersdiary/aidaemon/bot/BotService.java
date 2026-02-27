@@ -58,7 +58,7 @@ public class BotService {
         }
         var entries = repository.loadPersonalMemory(name);
         if (entries.isEmpty()) return List.of();
-        return ContextWindowTrimmer.trimToLimit(entries, maxChars);
+        return ContextWindowTrimmer.trimPersonalMemory(entries, maxChars);
     }
 
     public void appendTurnToPersonalMemory(String botName, String userContent,
