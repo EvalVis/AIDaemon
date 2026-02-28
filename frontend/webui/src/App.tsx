@@ -14,11 +14,18 @@ export interface StreamingContent {
   parts: StreamPart[];
 }
 
+function isDirectWithBot(c: Conversation, botName: string): boolean {
+  const p1 = c.participant1 ?? '';
+  const p2 = c.participant2 ?? '';
+  return (p1 === 'user' && p2 === botName) || (p1 === botName && p2 === 'user');
+}
+
 export default function App() {
   const [providers, setProviders] = useState<Provider[]>([]);
   const [bots, setBots] = useState<Bot[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [selectedBot, setSelectedBot] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [streaming, setStreaming] = useState<StreamingContent | null>(null);
   const [lastStreamedContent, setLastStreamedContent] = useState<{ conversationId: string; reasoning: string; parts: StreamPart[] } | null>(null);
@@ -47,6 +54,17 @@ export default function App() {
   }, []);
 
   const activeConversation = conversations.find((c) => c.id === activeId) ?? null;
+  const displayConversations =
+    selectedBot != null
+      ? conversations.filter((c) => isDirectWithBot(c, selectedBot))
+      : conversations.filter((c) => !(c.participant1 != null && c.participant2 != null));
+  const headerTitle = selectedBot ?? 'User';
+
+  useEffect(() => {
+    if (activeId != null && !displayConversations.some((c) => c.id === activeId)) {
+      setActiveId(null);
+    }
+  }, [selectedBot, activeId, displayConversations]);
 
   const handleAddProvider = async (req: CreateProviderRequest) => {
     const created = await api.createProvider(req);
@@ -79,6 +97,11 @@ export default function App() {
       return [...prev, conv];
     });
     setActiveId(conv.id);
+  };
+
+  const handleNewConversationWithBot = async (botName: string) => {
+    setSelectedBot(botName);
+    await handleOpenDirectChat(botName);
   };
 
   const handleUpdateConversationProvider = async (id: string, providerId: string | null) => {
@@ -182,17 +205,20 @@ export default function App() {
       <Sidebar
         providers={providers}
         bots={bots}
-        conversations={conversations}
+        conversations={displayConversations}
         activeId={activeId}
+        selectedBot={selectedBot}
+        onSelectBot={setSelectedBot}
         onSelectConversation={setActiveId}
         onCreateConversation={handleCreateConversation}
-        onOpenDirectChat={handleOpenDirectChat}
+        onNewConversationWithBot={handleNewConversationWithBot}
         onDeleteConversation={handleDeleteConversation}
         onAddProvider={handleAddProvider}
         onAddBot={handleAddBot}
       />
       <ChatWindow
         key={activeId ?? ''}
+        headerTitle={headerTitle}
         conversation={activeConversation}
         providers={providers}
         bots={bots}

@@ -6,9 +6,11 @@ interface SidebarProps {
   bots: Bot[];
   conversations: Conversation[];
   activeId: string | null;
+  selectedBot: string | null;
+  onSelectBot: (botName: string | null) => void;
   onSelectConversation: (id: string) => void;
   onCreateConversation: (name: string, providerId?: string | null) => void;
-  onOpenDirectChat: (botName: string, providerId?: string | null) => void;
+  onNewConversationWithBot: (botName: string) => void;
   onDeleteConversation: (id: string) => void;
   onAddProvider: (req: CreateProviderRequest) => void;
   onAddBot: (req: CreateBotRequest) => void;
@@ -72,9 +74,11 @@ export default function Sidebar({
   bots,
   conversations,
   activeId,
+  selectedBot,
+  onSelectBot,
   onSelectConversation,
   onCreateConversation,
-  onOpenDirectChat,
+  onNewConversationWithBot,
   onDeleteConversation,
   onAddProvider,
   onAddBot,
@@ -86,7 +90,8 @@ export default function Sidebar({
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
   const regular = conversations.filter((c) => !c.name.startsWith('[SJ]')).sort(byNewestFirst);
-  const scheduled = conversations.filter((c) => c.name.startsWith('[SJ]')).sort(byNewestFirst);
+  const scheduled =
+    selectedBot == null ? conversations.filter((c) => c.name.startsWith('[SJ]')).sort(byNewestFirst) : [];
   const regularTree = buildTree(regular);
   const scheduledTree = buildTree(scheduled);
 
@@ -202,25 +207,17 @@ export default function Sidebar({
 
       <div className="p-3 border-b border-border">
         <button
-          className="w-full py-2 px-3 bg-bg-input text-text-bright border border-border rounded-lg cursor-pointer text-sm transition-colors duration-150 hover:bg-bg-hover"
-          onClick={() => setShowNewConv(!showNewConv)}
+          className={`w-full py-2 px-3 text-left text-sm transition-colors duration-150 border rounded-lg cursor-pointer ${selectedBot === null ? 'bg-bg-active border-accent text-accent' : 'bg-bg-input text-text-bright border-border hover:bg-bg-hover'}`}
+          onClick={() => onSelectBot(null)}
         >
-          + New Conversation
+          User
         </button>
-        {showNewConv && (
-          <NewConversationForm
-            onCreate={(name) => {
-              onCreateConversation(name);
-              setShowNewConv(false);
-            }}
-          />
-        )}
       </div>
 
       <nav className="flex-1 overflow-y-auto py-2 flex flex-col gap-4">
         <div>
           <h3 className="px-3 py-1.5 text-[0.6875rem] font-semibold uppercase tracking-wide text-text-dim">
-            Chat with bot
+            Bots
           </h3>
           {bots.length > 0 ? (
             <div className="flex flex-col">
@@ -228,10 +225,9 @@ export default function Sidebar({
                 <button
                   key={b.name}
                   type="button"
-                  className="flex items-center gap-2 px-3 py-2.5 text-left text-sm text-text-bright hover:bg-bg-hover transition-colors duration-100 cursor-pointer"
-                  onClick={() => onOpenDirectChat(b.name)}
+                  className={`flex items-center gap-2 px-3 py-2.5 text-left text-sm transition-colors duration-100 cursor-pointer ${selectedBot === b.name ? 'bg-bg-active text-text-bright' : 'text-text-bright hover:bg-bg-hover'}`}
+                  onClick={() => onSelectBot(b.name)}
                 >
-                  <span className="shrink-0 text-base opacity-80">💬</span>
                   <span className="min-w-0 truncate">{b.name}</span>
                 </button>
               ))}
@@ -240,24 +236,53 @@ export default function Sidebar({
             <p className="px-3 py-2 text-text-dim text-[0.8125rem]">No bots. Add one above.</p>
           )}
         </div>
+        <div className="p-3 border-b border-border">
+          {selectedBot == null ? (
+            <>
+              <button
+                className="w-full py-2 px-3 bg-bg-input text-text-bright border border-border rounded-lg cursor-pointer text-sm transition-colors duration-150 hover:bg-bg-hover"
+                onClick={() => setShowNewConv(!showNewConv)}
+              >
+                + New Conversation
+              </button>
+              {showNewConv && (
+                <NewConversationForm
+                  onCreate={(name) => {
+                    onCreateConversation(name);
+                    setShowNewConv(false);
+                  }}
+                />
+              )}
+            </>
+          ) : (
+            <button
+              className="w-full py-2 px-3 bg-bg-input text-text-bright border border-border rounded-lg cursor-pointer text-sm transition-colors duration-150 hover:bg-bg-hover"
+              onClick={() => onNewConversationWithBot(selectedBot)}
+            >
+              + New conversation with {selectedBot}
+            </button>
+          )}
+        </div>
         <div>
           <h3 className="px-3 py-1.5 text-[0.6875rem] font-semibold uppercase tracking-wide text-text-dim">
-            Conversations
+            {selectedBot != null ? `Conversations with ${selectedBot}` : 'Conversations'}
           </h3>
           {regularTree.map((root) => renderConversation(root, false))}
           {regularTree.length === 0 && (
             <p className="text-center py-4 px-3 text-text-dim text-[0.8125rem]">No conversations yet</p>
           )}
         </div>
-        <div>
-          <h3 className="px-3 py-1.5 text-[0.6875rem] font-semibold uppercase tracking-wide text-text-dim">
-            Scheduled jobs
-          </h3>
-          {scheduledTree.map((root) => renderConversation(root, false))}
-          {scheduledTree.length === 0 && (
-            <p className="text-center py-4 px-3 text-text-dim text-[0.8125rem]">No scheduled job runs yet</p>
-          )}
-        </div>
+        {selectedBot == null && (
+          <div>
+            <h3 className="px-3 py-1.5 text-[0.6875rem] font-semibold uppercase tracking-wide text-text-dim">
+              Scheduled jobs
+            </h3>
+            {scheduledTree.map((root) => renderConversation(root, false))}
+            {scheduledTree.length === 0 && (
+              <p className="text-center py-4 px-3 text-text-dim text-[0.8125rem]">No scheduled job runs yet</p>
+            )}
+          </div>
+        )}
       </nav>
     </aside>
   );

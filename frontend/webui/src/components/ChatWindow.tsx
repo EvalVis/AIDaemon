@@ -5,6 +5,7 @@ import type { StreamingContent, StreamPart } from '../App';
 type DisplayMessage = ChatMessage | { role: 'assistant'; parts: StreamPart[] };
 
 interface ChatWindowProps {
+  headerTitle: string;
   conversation: Conversation | null;
   providers: Provider[];
   bots: Bot[];
@@ -151,6 +152,7 @@ function getDisplayMessages(
 }
 
 export default function ChatWindow({
+  headerTitle,
   conversation,
   providers,
   bots,
@@ -191,8 +193,17 @@ export default function ChatWindow({
 
   if (!conversation) {
     return (
-      <main className="flex-1 flex flex-col min-w-0 flex items-center justify-center text-text-dim text-base">
-        <p>Select or create a conversation to start chatting</p>
+      <main className="flex-1 flex flex-col min-w-0">
+        <header className="flex flex-wrap items-center gap-3 py-3.5 px-5 border-b border-border">
+          <h2 className="flex-1 min-w-0 text-base font-semibold text-text-bright truncate">{headerTitle}</h2>
+        </header>
+        <div className="flex-1 flex items-center justify-center text-text-dim text-base">
+          <p>
+            {headerTitle === 'User'
+              ? 'Select or create a conversation to start chatting'
+              : `Select or create a conversation with ${headerTitle} to start chatting`}
+          </p>
+        </div>
       </main>
     );
   }
@@ -200,7 +211,7 @@ export default function ChatWindow({
   return (
     <main className="flex-1 flex flex-col min-w-0">
       <header className="flex flex-wrap items-center gap-3 py-3.5 px-5 border-b border-border">
-        <h2 className="flex-1 min-w-0 text-base font-semibold text-text-bright truncate">{conversation.name}</h2>
+        <h2 className="flex-1 min-w-0 text-base font-semibold text-text-bright truncate">{headerTitle}</h2>
         <button
           className={`py-1 px-3 border rounded-lg cursor-pointer text-xs transition-all duration-150 whitespace-nowrap ${
             hideToolsAndThinking
