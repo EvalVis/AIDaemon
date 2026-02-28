@@ -12,6 +12,7 @@ import com.programmersdiary.aidaemon.skills.ShellAccessService;
 import com.programmersdiary.aidaemon.skills.ShellTool;
 import com.programmersdiary.aidaemon.skills.SkillsService;
 import com.programmersdiary.aidaemon.skills.SmitheryMcpTool;
+import com.programmersdiary.aidaemon.skills.SmitherySkillTool;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.StreamingChatModel;
@@ -46,6 +47,7 @@ public class ChatService {
     private final ConversationRepository conversationRepository;
     private final boolean delegationEnabled;
     private final SmitheryMcpTool smitheryMcpTool;
+    private final SmitherySkillTool smitherySkillTool;
     private final BotRepository botRepository;
 
     public ChatService(ProviderConfigRepository configRepository,
@@ -57,6 +59,7 @@ public class ChatService {
                        ConversationRepository conversationRepository,
                        BotRepository botRepository,
                        @Autowired(required = false) SmitheryMcpTool smitheryMcpTool,
+                       @Autowired(required = false) SmitherySkillTool smitherySkillTool,
                        @Value("${aidaemon.delegation-enabled:false}") boolean delegationEnabled) {
         this.configRepository = configRepository;
         this.chatModelFactory = chatModelFactory;
@@ -67,6 +70,7 @@ public class ChatService {
         this.conversationRepository = conversationRepository;
         this.botRepository = botRepository;
         this.smitheryMcpTool = smitheryMcpTool;
+        this.smitherySkillTool = smitherySkillTool;
         this.delegationEnabled = delegationEnabled;
     }
 
@@ -92,6 +96,10 @@ public class ChatService {
                 .forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog, null, onToolChunk)));
         if (smitheryMcpTool != null) {
             Arrays.asList(ToolCallbacks.from(smitheryMcpTool))
+                    .forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog, null, onToolChunk)));
+        }
+        if (smitherySkillTool != null) {
+            Arrays.asList(ToolCallbacks.from(smitherySkillTool))
                     .forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog, null, onToolChunk)));
         }
         mcpService.getToolCallbacksByServer().forEach((serverName, callbacks) ->
