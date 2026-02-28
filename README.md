@@ -229,25 +229,9 @@ Connect to the URL shown (e.g. Vite dev server). Configure providers and convers
 
 Skills are folders containing a `SKILL.md` and optional resources (scripts, references, assets) that give the AI domain-specific knowledge.
 
-**Manual install:** Drop a skill folder into `~/.aidaemon/skills/`.
+**Manual install:** Drop a skill folder into `~/.aidaemon/skills/`. With Smithery MCP enabled, ask the AI to search and install skills (e.g. "install the skill-creator skill from Smithery"); it uses `searchSmitherySkills` and `installSmitherySkill`.
 
-**Install from Smithery:**
-```bash
-curl -X POST http://localhost:8080/api/skills/install/anthropics/skill-creator
-```
-This downloads all files (SKILL.md, scripts, references, etc.) from the skill's GitHub repository.
-
-**Manage skills:**
-```bash
-# List installed skills
-curl http://localhost:8080/api/skills
-
-# List files in a skill
-curl http://localhost:8080/api/skills/skill-creator/files
-
-# Remove a skill
-curl -X DELETE http://localhost:8080/api/skills/skill-creator
-```
+**Manage skills:** Ask the AI to list skills (`listSkills`), list or read files in a skill (`listSkillFiles`, `readSkillFile`), or remove a skill (`removeSkill`).
 
 ## MCP Servers
 
@@ -371,10 +355,6 @@ curl -X DELETE http://localhost:8080/api/jobs/{id}
 | `POST` | `/api/conversations/{id}/messages/stream` | Send a message (SSE stream) |
 | `GET` | `/api/conversations` | List conversations |
 | `DELETE` | `/api/conversations/{id}` | Delete a conversation |
-| `GET` | `/api/skills` | List installed skills |
-| `GET` | `/api/skills/{name}/files` | List skill files |
-| `POST` | `/api/skills/install/{namespace}/{slug}` | Install from Smithery |
-| `DELETE` | `/api/skills/{name}` | Remove a skill |
 | `GET` | `/api/mcps` | List connected MCP servers |
 | `POST` | `/api/mcps/reload` | Reload MCP configurations |
 | `GET` | `/api/shell-access` | Shell access status |
