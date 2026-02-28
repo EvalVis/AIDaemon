@@ -36,7 +36,7 @@ public class ConversationService {
     public Conversation create(String name, String providerId, String botName, String parentConversationId) {
         var conversation = new Conversation(
                 UUID.randomUUID().toString(), name, providerId, botName, new ArrayList<>(), parentConversationId,
-                System.currentTimeMillis(), null, null);
+                System.currentTimeMillis(), null, null, null);
         return conversationRepository.save(conversation);
     }
 
@@ -79,7 +79,7 @@ public class ConversationService {
                     if (providerId != null && !providerId.isBlank() && !providerId.equals(conv.providerId())) {
                         var updated = new Conversation(conv.id(), conv.name(), providerId, conv.botName(),
                                 conv.messages(), conv.parentConversationId(), conv.createdAtMillis(),
-                                conv.participant1(), conv.participant2());
+                                conv.participant1(), conv.participant2(), conv.direct());
                         conversationRepository.save(updated);
                         return updated;
                     }
@@ -88,7 +88,7 @@ public class ConversationService {
                 .orElseGet(() -> {
                     var name = userParticipantId + " & " + botName;
                     var conv = new Conversation(id, name, providerId, botName, new ArrayList<>(), null,
-                            System.currentTimeMillis(), p1, p2);
+                            System.currentTimeMillis(), p1, p2, true);
                     return conversationRepository.save(conv);
                 });
     }
@@ -97,7 +97,8 @@ public class ConversationService {
         var conversation = conversationRepository.findById(conversationId)
                 .orElseThrow(() -> new IllegalArgumentException("Conversation not found: " + conversationId));
         var updated = new Conversation(conversation.id(), conversation.name(), providerId, conversation.botName(),
-                conversation.messages(), conversation.parentConversationId(), conversation.createdAtMillis());
+                conversation.messages(), conversation.parentConversationId(), conversation.createdAtMillis(),
+                conversation.participant1(), conversation.participant2(), conversation.direct());
         return conversationRepository.save(updated);
     }
 

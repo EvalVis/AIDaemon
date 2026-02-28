@@ -69,7 +69,8 @@ public class ConversationController {
                 conversation.parentConversationId(),
                 conversation.createdAtMillis(),
                 conversation.participant1(),
-                conversation.participant2());
+                conversation.participant2(),
+                conversation.direct());
         conversationService.save(updated);
         return updated;
     }

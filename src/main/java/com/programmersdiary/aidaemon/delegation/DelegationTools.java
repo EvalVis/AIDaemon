@@ -36,7 +36,7 @@ public class DelegationTools {
         var subConversation = new Conversation(
                 UUID.randomUUID().toString(), name, providerId, botName,
                 new ArrayList<>(List.of(ChatMessage.of("user", instruction))),
-                parentConversationId, System.currentTimeMillis());
+                parentConversationId, System.currentTimeMillis(), null, null, null);
         conversationRepository.save(subConversation);
         pendingSubConversationIds.add(subConversation.id());
         return "Delegated to sub-agent '" + name + "' (" + subConversation.id() + "). " +
