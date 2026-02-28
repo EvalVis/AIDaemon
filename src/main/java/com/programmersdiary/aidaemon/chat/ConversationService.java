@@ -40,12 +40,36 @@ public class ConversationService {
         return conversationRepository.save(conversation);
     }
 
+    public String sendMessageBotToBot(String callerBotName, String targetBotName, String message, String providerId) {
+        if (callerBotName == null || callerBotName.isBlank() || "default".equalsIgnoreCase(callerBotName)) {
+            throw new IllegalArgumentException("Bot-to-bot messaging requires a named caller bot");
+        }
+        if (targetBotName == null || targetBotName.isBlank() || "default".equalsIgnoreCase(targetBotName)) {
+            throw new IllegalArgumentException("Target bot name is required");
+        }
+        if (callerBotName.equals(targetBotName)) {
+            throw new IllegalArgumentException("Caller and target bot must be different");
+        }
+        var botNames = botService.listBots().stream().map(b -> b.name()).toList();
+        if (!botNames.contains(callerBotName)) {
+            throw new IllegalArgumentException("Caller bot not found: " + callerBotName);
+        }
+        if (!botNames.contains(targetBotName)) {
+            throw new IllegalArgumentException("Target bot not found: " + targetBotName);
+        }
+        var conv = getOrCreateDirect(callerBotName, targetBotName, providerId);
+        return sendMessage(conv.id(), message);
+    }
+
     public Conversation getOrCreateDirect(String userParticipantId, String botName, String providerId) {
         if (botName == null || botName.isBlank() || "default".equalsIgnoreCase(botName)) {
             throw new IllegalArgumentException("Direct chat requires a named bot");
         }
         if (!botService.listBots().stream().anyMatch(b -> botName.equals(b.name()))) {
             throw new IllegalArgumentException("Bot not found: " + botName);
+        }
+        if (!"user".equals(userParticipantId) && !botService.listBots().stream().anyMatch(b -> userParticipantId.equals(b.name()))) {
+            throw new IllegalArgumentException("Participant not found: " + userParticipantId);
         }
         var id = Conversation.canonicalId(userParticipantId, botName);
         var p1 = userParticipantId.compareTo(botName) <= 0 ? userParticipantId : botName;

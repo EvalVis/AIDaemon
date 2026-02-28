@@ -14,12 +14,6 @@ export interface StreamingContent {
   parts: StreamPart[];
 }
 
-function isDirectWithBot(c: Conversation, botName: string): boolean {
-  const p1 = c.participant1 ?? '';
-  const p2 = c.participant2 ?? '';
-  return (p1 === 'user' && p2 === botName) || (p1 === botName && p2 === 'user');
-}
-
 export default function App() {
   const [providers, setProviders] = useState<Provider[]>([]);
   const [bots, setBots] = useState<Bot[]>([]);
@@ -34,7 +28,9 @@ export default function App() {
   const streamingRef = useRef<StreamingContent | null>(null);
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const activeIdRef = useRef(activeId);
+  const selectedBotRef = useRef(selectedBot);
   activeIdRef.current = activeId;
+  selectedBotRef.current = selectedBot;
 
   const setInputDraft = (value: string) => {
     inputDraftRef.current = value;
@@ -43,9 +39,13 @@ export default function App() {
 
   useEffect(() => {
     api.fetchProviders().then(setProviders);
-    api.fetchConversations('user').then(setConversations);
     api.fetchBots().then(setBots);
   }, []);
+
+  useEffect(() => {
+    const participant = selectedBot ?? 'user';
+    api.fetchConversations(participant).then(setConversations);
+  }, [selectedBot]);
 
   useEffect(() => {
     return () => {
@@ -56,7 +56,7 @@ export default function App() {
   const activeConversation = conversations.find((c) => c.id === activeId) ?? null;
   const displayConversations =
     selectedBot != null
-      ? conversations.filter((c) => isDirectWithBot(c, selectedBot))
+      ? conversations
       : conversations.filter((c) => !(c.participant1 != null && c.participant2 != null));
   const headerTitle = selectedBot ?? 'User';
 
@@ -179,8 +179,9 @@ export default function App() {
         setSending(false);
         setStreaming(null);
         streamingRef.current = null;
+        const participant = selectedBotRef.current ?? 'user';
         const poll = () => {
-          api.fetchConversations('user').then((list) => setConversations([...list]));
+          api.fetchConversations(participant).then((list) => setConversations([...list]));
         };
         poll();
         pollIntervalRef.current = setInterval(poll, 2500);
@@ -195,7 +196,7 @@ export default function App() {
         setSending(false);
         setStreaming(null);
         streamingRef.current = null;
-        api.fetchConversations('user').then(setConversations);
+        api.fetchConversations(selectedBotRef.current ?? 'user').then(setConversations);
       }
     );
   };

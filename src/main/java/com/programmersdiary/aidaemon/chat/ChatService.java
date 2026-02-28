@@ -2,17 +2,9 @@ package com.programmersdiary.aidaemon.chat;
 
 import com.programmersdiary.aidaemon.chat.StreamRequestMetadata;
 import com.programmersdiary.aidaemon.delegation.DelegationTools;
-import com.programmersdiary.aidaemon.bot.BotRepository;
 import com.programmersdiary.aidaemon.mcp.McpService;
 import com.programmersdiary.aidaemon.provider.ChatModelFactory;
 import com.programmersdiary.aidaemon.provider.ProviderConfigRepository;
-import com.programmersdiary.aidaemon.scheduling.ScheduledJobExecutor;
-import com.programmersdiary.aidaemon.skills.ChatTools;
-import com.programmersdiary.aidaemon.skills.ShellAccessService;
-import com.programmersdiary.aidaemon.skills.ShellTool;
-import com.programmersdiary.aidaemon.skills.SkillsService;
-import com.programmersdiary.aidaemon.skills.SmitheryMcpTool;
-import com.programmersdiary.aidaemon.skills.SmitherySkillTool;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.StreamingChatModel;
@@ -20,14 +12,12 @@ import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Sinks;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -40,37 +30,22 @@ public class ChatService {
 
     private final ProviderConfigRepository configRepository;
     private final ChatModelFactory chatModelFactory;
-    private final SkillsService skillsService;
-    private final ScheduledJobExecutor jobExecutor;
-    private final ShellAccessService shellAccessService;
+    private final ChatToolCallbacksService toolCallbacksService;
     private final McpService mcpService;
     private final ConversationRepository conversationRepository;
     private final boolean delegationEnabled;
-    private final SmitheryMcpTool smitheryMcpTool;
-    private final SmitherySkillTool smitherySkillTool;
-    private final BotRepository botRepository;
 
     public ChatService(ProviderConfigRepository configRepository,
                        ChatModelFactory chatModelFactory,
-                       SkillsService skillsService,
-                       ScheduledJobExecutor jobExecutor,
-                       ShellAccessService shellAccessService,
+                       ChatToolCallbacksService toolCallbacksService,
                        McpService mcpService,
                        ConversationRepository conversationRepository,
-                       BotRepository botRepository,
-                       @Autowired(required = false) SmitheryMcpTool smitheryMcpTool,
-                       @Autowired(required = false) SmitherySkillTool smitherySkillTool,
                        @Value("${aidaemon.delegation-enabled:false}") boolean delegationEnabled) {
         this.configRepository = configRepository;
         this.chatModelFactory = chatModelFactory;
-        this.skillsService = skillsService;
-        this.jobExecutor = jobExecutor;
-        this.shellAccessService = shellAccessService;
+        this.toolCallbacksService = toolCallbacksService;
         this.mcpService = mcpService;
         this.conversationRepository = conversationRepository;
-        this.botRepository = botRepository;
-        this.smitheryMcpTool = smitheryMcpTool;
-        this.smitherySkillTool = smitherySkillTool;
         this.delegationEnabled = delegationEnabled;
     }
 
@@ -85,22 +60,12 @@ public class ChatService {
         var config = configRepository.findById(providerId)
                 .orElseThrow(() -> new IllegalArgumentException("Provider not found: " + providerId));
 
-        var filtered = meta.messages().stream().filter(m -> !"tool".equals(m.role())).toList();
         final var toolLog = new ArrayList<ChatMessage>();
         var sink = Sinks.many().unicast().<StreamChunk>onBackpressureBuffer();
         var onToolChunk = (Consumer<StreamChunk>) c -> sink.tryEmitNext(c);
         var loggingTools = new ArrayList<ToolCallback>();
-        Arrays.asList(ToolCallbacks.from(new ChatTools(skillsService, jobExecutor, providerId, filtered, meta.conversationLimit(), meta.botName(), botRepository)))
-                .forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog, null, onToolChunk)));
-        Arrays.asList(ToolCallbacks.from(new ShellTool(shellAccessService)))
-                .forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog, null, onToolChunk)));
-        if (smitheryMcpTool != null) {
-            Arrays.asList(ToolCallbacks.from(smitheryMcpTool))
-                    .forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog, null, onToolChunk)));
-        }
-        if (smitherySkillTool != null) {
-            Arrays.asList(ToolCallbacks.from(smitherySkillTool))
-                    .forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog, null, onToolChunk)));
+        for (var t : toolCallbacksService.buildToolCallbacks(meta, config.id())) {
+            loggingTools.add(new LoggingToolCallback(t, toolLog, null, onToolChunk));
         }
         mcpService.getToolCallbacksByServer().forEach((serverName, callbacks) ->
                 callbacks.forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog, serverName, onToolChunk))));
@@ -109,8 +74,9 @@ public class ChatService {
                 ? new DelegationTools(conversationRepository, meta.conversationId(), providerId, meta.botName())
                 : null;
         if (delegationTools != null) {
-            Arrays.asList(ToolCallbacks.from(delegationTools))
-                    .forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog, null, onToolChunk)));
+            for (var t : org.springframework.ai.support.ToolCallbacks.from(delegationTools)) {
+                loggingTools.add(new LoggingToolCallback(t, toolLog, null, onToolChunk));
+            }
         }
 
         var chatModel = chatModelFactory.create(config, loggingTools);
