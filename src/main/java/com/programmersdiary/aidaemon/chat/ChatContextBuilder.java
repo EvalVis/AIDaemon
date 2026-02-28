@@ -30,12 +30,17 @@ public class ChatContextBuilder {
     }
 
     public List<Message> buildMessages(List<ChatMessage> messages, String botName,
-                                      int conversationLimit, int personalMemoryLimit, String systemInstructions) {
+                                      int conversationLimit, int personalMemoryLimit, String systemInstructions,
+                                      String senderIdentity) {
         var springMessages = new ArrayList<Message>();
         springMessages.add(SystemMessage.builder().text(systemInstructions != null ? systemInstructions : "").metadata(cacheControl()).build());
         var soul = botService.loadSoul(botName);
         if (soul != null && !soul.isBlank()) {
             springMessages.add(new SystemMessage(soul));
+        }
+        if (senderIdentity != null && !senderIdentity.isBlank() && !"user".equalsIgnoreCase(senderIdentity)) {
+            springMessages.add(new SystemMessage(
+                    "The message is from bot named \"" + senderIdentity + "\"."));
         }
         if (personalMemoryLimit > 0) {
             var trimmed = botService.loadPersonalMemoryTrimmed(botName, personalMemoryLimit);

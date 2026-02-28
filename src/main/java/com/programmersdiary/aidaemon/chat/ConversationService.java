@@ -113,7 +113,8 @@ public class ConversationService {
         }
         conversation.messages().add(ChatMessage.of("user", userMessage));
         var bot = botService.getBot(conversation.botName());
-        var result = bot.chat(conversation.providerId(), conversation.messages(), conversationId);
+        var senderIdentity = senderIdentity(conversation);
+        var result = bot.chat(conversation.providerId(), conversation.messages(), conversationId, senderIdentity);
         conversation.messages().add(ChatMessage.of("assistant", result.assistantContent()));
         conversationRepository.save(conversation);
 
@@ -137,6 +138,7 @@ public class ConversationService {
         conversationRepository.save(conversation);
 
         var bot = botService.getBot(conversation.botName());
+        var senderIdentity = senderIdentity(conversation);
         return bot.chatStream(conversation.providerId(), conversation.messages(), conversationId, result -> {
             conversation.messages().add(ChatMessage.of("assistant", result.assistantContent()));
             conversationRepository.save(conversation);
@@ -146,7 +148,16 @@ public class ConversationService {
                     delegationService.startSubAgents(result.pendingSubConversationIds());
                 }
             }
-        });
+        }, senderIdentity);
+    }
+
+    private static String senderIdentity(Conversation conversation) {
+        if (!conversation.isDirect() || conversation.botName() == null) return null;
+        var p1 = conversation.participant1();
+        var p2 = conversation.participant2();
+        if (p1 == null || p2 == null) return null;
+        var other = p1.equals(conversation.botName()) ? p2 : p1;
+        return "user".equalsIgnoreCase(other) ? null : other;
     }
 
     public Conversation get(String conversationId) {

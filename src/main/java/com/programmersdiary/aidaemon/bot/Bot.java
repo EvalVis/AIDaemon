@@ -38,8 +38,12 @@ public class Bot {
     }
 
     public ChatResult chat(String providerId, List<ChatMessage> messages, String conversationId) {
+        return chat(providerId, messages, conversationId, null);
+    }
+
+    public ChatResult chat(String providerId, List<ChatMessage> messages, String conversationId, String senderIdentity) {
         var meta = streamRequestMetadata(messages, conversationId);
-        var contextMessages = buildContext(messages);
+        var contextMessages = buildContext(messages, senderIdentity);
         var result = chatService.streamAndCollect(providerId, contextMessages, meta);
         appendToPersonalMemoryAfterChat(messages, result);
         return result;
@@ -47,8 +51,13 @@ public class Bot {
 
     public Flux<StreamChunk> chatStream(String providerId, List<ChatMessage> messages, String conversationId,
                                        Consumer<ChatResult> onComplete) {
+        return chatStream(providerId, messages, conversationId, onComplete, null);
+    }
+
+    public Flux<StreamChunk> chatStream(String providerId, List<ChatMessage> messages, String conversationId,
+                                       Consumer<ChatResult> onComplete, String senderIdentity) {
         var meta = streamRequestMetadata(messages, conversationId);
-        var contextMessages = buildContext(messages);
+        var contextMessages = buildContext(messages, senderIdentity);
         return chatService.stream(providerId, contextMessages, meta, result -> {
             appendToPersonalMemoryAfterChat(messages, result);
             onComplete.accept(result);
@@ -56,10 +65,14 @@ public class Bot {
     }
 
     public List<Message> buildContext(List<ChatMessage> messages) {
+        return buildContext(messages, null);
+    }
+
+    public List<Message> buildContext(List<ChatMessage> messages, String senderIdentity) {
         var named = isNamed();
         var convLimit = contextConfig.conversationLimit(named);
         var personalLimit = contextConfig.personalMemoryLimit(named);
-        return contextBuilder.buildMessages(messages, name, convLimit, personalLimit, contextConfig.systemInstructions());
+        return contextBuilder.buildMessages(messages, name, convLimit, personalLimit, contextConfig.systemInstructions(), senderIdentity);
     }
 
     public StreamRequestMetadata streamRequestMetadata(List<ChatMessage> messages, String conversationId) {

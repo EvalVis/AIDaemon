@@ -28,13 +28,35 @@ function formatTime(ms: number): string {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad3(d.getMilliseconds())}`;
 }
 
-function MessageEntry({ msg }: { msg: DisplayMessage }) {
+function roleDisplayName(role: string, conversation: Conversation | null): string {
+  if (!conversation) return role;
+  if (role === 'user') {
+    const p1 = conversation.participant1 ?? '';
+    const p2 = conversation.participant2 ?? '';
+    const bot = conversation.botName ?? '';
+    if (p1 && p2 && bot && p1 !== 'user' && p2 !== 'user') {
+      return p1 === bot ? p2 : p1;
+    }
+    return 'user';
+  }
+  if (role === 'assistant') {
+    const bot = conversation.botName ?? '';
+    if (bot) return bot;
+    const p1 = conversation.participant1 ?? '';
+    const p2 = conversation.participant2 ?? '';
+    if (p1 && p2) return p1 === 'user' ? p2 : p2 === 'user' ? p1 : p2;
+  }
+  return role;
+}
+
+function MessageEntry({ msg, conversation }: { msg: DisplayMessage; conversation: Conversation | null }) {
   const hasParts = 'parts' in msg && msg.parts != null;
   const [collapsed, setCollapsed] = useState(msg.role === 'tool' && !hasParts);
   const content = 'content' in msg ? msg.content : '';
   const preview = content.slice(0, PREVIEW_LENGTH) + (content.length > PREVIEW_LENGTH ? '…' : '');
   const timeStr = 'timestampMillis' in msg && msg.timestampMillis != null && msg.timestampMillis > 0
     ? formatTime(msg.timestampMillis) : null;
+  const displayName = roleDisplayName(msg.role, conversation);
 
   const messageStyles =
     msg.role === 'user'
@@ -49,8 +71,8 @@ function MessageEntry({ msg }: { msg: DisplayMessage }) {
         className="flex items-baseline gap-2 cursor-pointer select-none"
         onClick={() => setCollapsed((v) => !v)}
       >
-        <span className="text-[0.6875rem] font-semibold uppercase tracking-wide text-text-dim shrink-0">
-          {msg.role}
+        <span className={`text-[0.6875rem] font-semibold tracking-wide text-text-dim shrink-0 ${['user', 'assistant', 'tool'].includes(displayName.toLowerCase()) ? 'uppercase' : ''}`}>
+          {displayName}
         </span>
         {timeStr != null && (
           <span className="text-[0.6875rem] tabular-nums text-text-dim opacity-85">{timeStr}</span>
@@ -228,13 +250,15 @@ export default function ChatWindow({
       <div className="flex-1 overflow-y-auto py-4 px-5 flex flex-col gap-3" ref={messagesRef}>
         <div ref={topRef} />
         {visibleMessages.map((msg, i) => (
-          <MessageEntry key={i} msg={msg} />
+          <MessageEntry key={i} msg={msg} conversation={conversation} />
         ))}
-        {sending && (
+        {sending && (() => {
+          const assistantLabel = roleDisplayName('assistant', conversation);
+          return (
           <div className="max-w-[80%] py-2.5 px-3.5 rounded-lg text-sm leading-relaxed self-start bg-assistant-bg border border-border opacity-95">
             <div className="flex items-baseline gap-2 cursor-pointer select-none">
-              <span className="text-[0.6875rem] font-semibold uppercase tracking-wide text-text-dim shrink-0">
-                assistant
+              <span className={`text-[0.6875rem] font-semibold tracking-wide text-text-dim shrink-0 ${['user', 'assistant', 'tool'].includes(assistantLabel.toLowerCase()) ? 'uppercase' : ''}`}>
+                {assistantLabel}
               </span>
             </div>
             <div className="text-text-bright mt-1.5 min-w-0 break-words">
@@ -271,7 +295,8 @@ export default function ChatWindow({
               )}
             </div>
           </div>
-        )}
+          );
+        })()}
         <div ref={bottomRef} />
       </div>
 
