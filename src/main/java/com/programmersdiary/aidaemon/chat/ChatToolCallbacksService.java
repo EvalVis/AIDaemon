@@ -59,7 +59,7 @@ public class ChatToolCallbacksService {
 
         var botName = meta.botName();
         if (botName != null && !botName.isBlank() && !"default".equalsIgnoreCase(botName)) {
-            list.addAll(Arrays.asList(ToolCallbacks.from(new BotToBotTool(conversationService, providerId, botName))));
+            list.addAll(Arrays.asList(ToolCallbacks.from(new BotToBotTool(conversationService, botRepository, providerId, botName))));
         }
         if (smitheryMcpTool != null) {
             list.addAll(Arrays.asList(ToolCallbacks.from(smitheryMcpTool)));

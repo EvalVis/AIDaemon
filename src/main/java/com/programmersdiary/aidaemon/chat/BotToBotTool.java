@@ -1,18 +1,30 @@
 package com.programmersdiary.aidaemon.chat;
 
+import com.programmersdiary.aidaemon.bot.BotRepository;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 
 public class BotToBotTool {
 
     private final ConversationService conversationService;
+    private final BotRepository botRepository;
     private final String currentProviderId;
     private final String currentBotName;
 
-    public BotToBotTool(ConversationService conversationService, String currentProviderId, String currentBotName) {
+    public BotToBotTool(ConversationService conversationService, BotRepository botRepository,
+                        String currentProviderId, String currentBotName) {
         this.conversationService = conversationService;
+        this.botRepository = botRepository;
         this.currentProviderId = currentProviderId;
         this.currentBotName = currentBotName;
+    }
+
+    @Tool(description = "List other bots you can message. Returns bot names (excluding yourself).")
+    public String listOtherBots() {
+        var others = botRepository.findAllNames().stream()
+                .filter(n -> !currentBotName.equals(n))
+                .toList();
+        return others.isEmpty() ? "No bots found." : "Other bots: " + String.join(", ", others);
     }
 
     @Tool(description = "Send a message to another bot and get its reply. Use when you need to ask another bot for information or to perform a task. The other bot will respond in the same provider context.")
