@@ -7,6 +7,7 @@ import com.programmersdiary.aidaemon.provider.ProviderConfigRepository;
 import com.programmersdiary.aidaemon.provider.ProviderType;
 import com.programmersdiary.aidaemon.scheduling.ScheduledJobExecutor;
 import com.programmersdiary.aidaemon.skills.ChatTools;
+import com.programmersdiary.aidaemon.skills.FileEditTool;
 import com.programmersdiary.aidaemon.skills.ImageGenerationTool;
 import com.programmersdiary.aidaemon.skills.ShellAccessService;
 import com.programmersdiary.aidaemon.skills.ShellTool;
@@ -24,10 +25,10 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
 import java.time.Duration;
-
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.Consumer;
 
 @Service
 public class ChatToolCallbacksService {
@@ -35,6 +36,7 @@ public class ChatToolCallbacksService {
     private final SkillsService skillsService;
     private final ScheduledJobExecutor jobExecutor;
     private final ShellAccessService shellAccessService;
+    private final ToolApprovalService toolApprovalService;
     private final ConversationService conversationService;
     private final BotRepository botRepository;
     private final McpService mcpService;
@@ -46,6 +48,7 @@ public class ChatToolCallbacksService {
     public ChatToolCallbacksService(SkillsService skillsService,
                                    ScheduledJobExecutor jobExecutor,
                                    ShellAccessService shellAccessService,
+                                   ToolApprovalService toolApprovalService,
                                    @Lazy ConversationService conversationService,
                                    BotRepository botRepository,
                                    McpService mcpService,
@@ -56,6 +59,7 @@ public class ChatToolCallbacksService {
         this.skillsService = skillsService;
         this.jobExecutor = jobExecutor;
         this.shellAccessService = shellAccessService;
+        this.toolApprovalService = toolApprovalService;
         this.conversationService = conversationService;
         this.botRepository = botRepository;
         this.mcpService = mcpService;
@@ -65,7 +69,13 @@ public class ChatToolCallbacksService {
         this.fileStorageService = fileStorageService;
     }
 
-    public List<ToolCallback> buildToolCallbacks(StreamRequestMetadata meta, String providerId) {
+    public List<ToolCallback> buildFileEditToolCallbacks(StreamRequestMetadata meta, Consumer<StreamChunk> onChunk) {
+        return Arrays.asList(ToolCallbacks.from(
+                new FileEditTool(shellAccessService, toolApprovalService::requestApproval, onChunk)));
+    }
+
+    public List<ToolCallback> buildToolCallbacks(StreamRequestMetadata meta, String providerId,
+                                                  Consumer<StreamChunk> onFileChangeChunk) {
         var filtered = meta.messages().stream().filter(m -> !"tool".equals(m.role())).toList();
         var list = new ArrayList<ToolCallback>();
 

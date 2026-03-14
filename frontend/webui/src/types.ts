@@ -52,4 +52,9 @@ export interface PendingToolApproval {
   approvalId: string;
   toolName: string;
   toolInput: string;
+  // Present only for file edit tools (createFile / modifyFile / deleteFile)
+  operation?: 'CREATE' | 'MODIFY' | 'DELETE';
+  path?: string;
+  oldContent?: string | null;
+  newContent?: string | null;
 }

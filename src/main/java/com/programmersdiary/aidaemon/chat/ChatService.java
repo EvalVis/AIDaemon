@@ -75,8 +75,12 @@ public class ChatService {
         var approvalServiceForTools = manualApprove ? toolApprovalService : null;
         var execTimeout = manualApprove ? toolExecutionTimeoutSeconds : 0;
         var loggingTools = new ArrayList<ToolCallback>();
-        for (var t : toolCallbacksService.buildToolCallbacks(meta, config.id())) {
+        for (var t : toolCallbacksService.buildToolCallbacks(meta, config.id(), onToolChunk)) {
             loggingTools.add(new LoggingToolCallback(t, toolLog, null, onToolChunk, approvalServiceForTools, execTimeout));
+        }
+        // File edit tools handle their own diff-based approval — never wrap with pre-approval
+        for (var t : toolCallbacksService.buildFileEditToolCallbacks(meta, onToolChunk)) {
+            loggingTools.add(new LoggingToolCallback(t, toolLog, null, onToolChunk, null, execTimeout));
         }
         mcpService.getToolCallbacksByServer().forEach((serverName, callbacks) ->
                 callbacks.forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog, serverName, onToolChunk, approvalServiceForTools, execTimeout))));

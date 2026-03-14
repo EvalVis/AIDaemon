@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.programmersdiary.aidaemon.chat.Conversation;
 import com.programmersdiary.aidaemon.chat.ConversationService;
 import com.programmersdiary.aidaemon.chat.StreamChunk;
+import com.programmersdiary.aidaemon.skills.ShellAccessService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.http.HttpStatus;
@@ -30,10 +31,13 @@ public class ConversationController {
 
     private final ConversationService conversationService;
     private final boolean manualApprove;
+    private final ShellAccessService shellAccessService;
 
     public ConversationController(ConversationService conversationService,
+                                  ShellAccessService shellAccessService,
                                   @Value("${aidaemon.manual-approve:false}") boolean manualApprove) {
         this.conversationService = conversationService;
+        this.shellAccessService = shellAccessService;
         this.manualApprove = manualApprove;
     }
 
@@ -94,7 +98,8 @@ public class ConversationController {
 
     @PostMapping(value = "/{id}/messages/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter sendMessageStream(@PathVariable String id, @RequestBody MessageRequest request) {
-        var emitter = new SseEmitter(manualApprove ? NO_TIMEOUT : DEFAULT_TIMEOUT_MS);
+        var useNoTimeout = manualApprove || shellAccessService.isEnabled();
+        var emitter = new SseEmitter(useNoTimeout ? NO_TIMEOUT : DEFAULT_TIMEOUT_MS);
         conversationService.sendMessageStream(id, request.message(), request.fileIds())
                 .subscribe(
                         chunk -> {

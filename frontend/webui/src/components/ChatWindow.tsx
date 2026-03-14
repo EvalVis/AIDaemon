@@ -132,6 +132,46 @@ function FileChip({
   );
 }
 
+type DiffLine =
+  | { type: 'added'; content: string }
+  | { type: 'deleted'; content: string }
+  | { type: 'unchanged'; content: string };
+
+function computeDiff(oldContent: string | null | undefined, newContent: string | null | undefined,
+                     operation: PendingToolApproval['operation']): DiffLine[] {
+  if (operation === 'CREATE') {
+    return (newContent ?? '').split('\n').map((l) => ({ type: 'added', content: l }));
+  }
+  if (operation === 'DELETE') {
+    return (oldContent ?? '').split('\n').map((l) => ({ type: 'deleted', content: l }));
+  }
+  const oldLines = (oldContent ?? '').split('\n');
+  const newLines = (newContent ?? '').split('\n');
+  if (oldLines.length * newLines.length > 200_000) {
+    return [
+      ...oldLines.map((l) => ({ type: 'deleted' as const, content: l })),
+      ...newLines.map((l) => ({ type: 'added' as const, content: l })),
+    ];
+  }
+  const m = oldLines.length, n = newLines.length;
+  const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = 1; i <= m; i++)
+    for (let j = 1; j <= n; j++)
+      dp[i][j] = oldLines[i - 1] === newLines[j - 1] ? dp[i - 1][j - 1] + 1 : Math.max(dp[i - 1][j], dp[i][j - 1]);
+  const result: DiffLine[] = [];
+  let i = m, j = n;
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && oldLines[i - 1] === newLines[j - 1]) {
+      result.unshift({ type: 'unchanged', content: oldLines[i - 1] }); i--; j--;
+    } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+      result.unshift({ type: 'added', content: newLines[j - 1] }); j--;
+    } else {
+      result.unshift({ type: 'deleted', content: oldLines[i - 1] }); i--;
+    }
+  }
+  return result;
+}
+
 function ToolApprovalCard({
   approval,
   onApprove,
@@ -142,26 +182,71 @@ function ToolApprovalCard({
   onReject: () => void;
 }) {
   const [expanded, setExpanded] = useState(true);
+  const isFileOp = Object.hasOwn(approval, 'operation') && approval.operation != null;
+
+  const diff = isFileOp ? computeDiff(approval.oldContent, approval.newContent, approval.operation) : null;
+  const addedCount = diff ? diff.filter((l) => l.type === 'added').length : 0;
+  const deletedCount = diff ? diff.filter((l) => l.type === 'deleted').length : 0;
+
   return (
     <div className="self-stretch mx-0 py-3 px-4 rounded-lg border border-accent/50 bg-accent/10 text-sm">
       <div className="flex items-center gap-2 mb-2">
         <span className="text-[0.6875rem] font-semibold uppercase tracking-wide text-accent">Tool approval required</span>
         <span className="ml-1 font-mono text-text-bright text-xs bg-bg-input px-2 py-0.5 rounded border border-border">{approval.toolName}</span>
+        {isFileOp && (addedCount > 0 || deletedCount > 0) && (
+          <span className="text-[0.6875rem]">
+            {addedCount > 0 && <span className="text-green-400">+{addedCount}</span>}
+            {addedCount > 0 && deletedCount > 0 && <span className="text-text-dim mx-0.5">/</span>}
+            {deletedCount > 0 && <span className="text-red-400">-{deletedCount}</span>}
+          </span>
+        )}
       </div>
+
+      {isFileOp && approval.path && (
+        <div className="mb-2">
+          <span className="font-mono text-xs text-text-bright bg-bg-input px-2 py-0.5 rounded border border-border truncate max-w-full inline-block">
+            {approval.path}
+          </span>
+        </div>
+      )}
+
       <div className="mb-3">
         <button
           className="text-[0.6875rem] text-text-dim hover:text-text-bright transition-colors duration-100 flex items-center gap-1"
           onClick={() => setExpanded((v) => !v)}
         >
-          {expanded ? '▾' : '▸'} Input
+          {expanded ? '▾' : '▸'} {isFileOp ? 'Diff' : 'Input'}
         </button>
         {expanded && (
-          <pre className="mt-1.5 p-2 bg-bg rounded-lg text-xs text-text-dim whitespace-pre-wrap break-words max-h-[160px] overflow-y-auto border border-border">
-            {(() => {
-              try { return JSON.stringify(JSON.parse(approval.toolInput), null, 2); }
-              catch { return approval.toolInput; }
-            })()}
-          </pre>
+          isFileOp && diff ? (
+            <div className="mt-1.5 rounded-lg border border-border overflow-hidden max-h-[400px] overflow-y-auto">
+              {diff.length === 0 ? (
+                <div className="p-2 text-xs text-text-dim font-mono">(no changes)</div>
+              ) : (
+                <table className="w-full border-collapse text-xs font-mono">
+                  <tbody>
+                    {diff.map((line, idx) => (
+                      <tr key={idx} className={line.type === 'added' ? 'bg-green-950/60' : line.type === 'deleted' ? 'bg-red-950/60' : ''}>
+                        <td className="w-6 text-center select-none text-[0.65rem] px-1 py-0 border-r border-border text-text-dim">
+                          {line.type === 'added' ? '+' : line.type === 'deleted' ? '−' : ' '}
+                        </td>
+                        <td className={`px-2 py-0 whitespace-pre break-all leading-5 ${line.type === 'added' ? 'text-green-300' : line.type === 'deleted' ? 'text-red-300' : 'text-text-dim'}`}>
+                          {line.content}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          ) : (
+            <pre className="mt-1.5 p-2 bg-bg rounded-lg text-xs text-text-dim whitespace-pre-wrap break-words max-h-[160px] overflow-y-auto border border-border">
+              {(() => {
+                try { return JSON.stringify(JSON.parse(approval.toolInput), null, 2); }
+                catch { return approval.toolInput; }
+              })()}
+            </pre>
+          )
         )}
       </div>
       <div className="flex gap-2">

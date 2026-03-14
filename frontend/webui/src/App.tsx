@@ -236,6 +236,7 @@ export default function App() {
     await api.rejectTool(approvalId);
   };
 
+
   return (
     <div className="flex h-screen">
       <Sidebar
