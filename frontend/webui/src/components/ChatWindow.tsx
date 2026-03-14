@@ -49,7 +49,49 @@ function roleDisplayName(role: string, conversation: Conversation | null): strin
   return role;
 }
 
-function MessageEntry({ msg, conversation }: { msg: DisplayMessage; conversation: Conversation | null }) {
+function getMessagePlainText(msg: DisplayMessage, includeThinking: boolean): string {
+  if ('parts' in msg && msg.parts != null) {
+    return msg.parts
+      .filter((p) => p.type === 'answer' || (includeThinking && p.type === 'reasoning'))
+      .map((p) => p.content)
+      .join(' ')
+      .trim();
+  }
+  if ('content' in msg) return msg.content;
+  return '';
+}
+
+function MicIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="4.5" y="0.5" width="5" height="8" rx="2.5" fill="currentColor" stroke="none" />
+      <path d="M2 6.5a5 5 0 0010 0" />
+      <line x1="7" y1="11.5" x2="7" y2="13.5" />
+      <line x1="4.5" y1="13.5" x2="9.5" y2="13.5" />
+    </svg>
+  );
+}
+
+function SpeakerIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M1.5 4.5H3.5L7 1.5V10.5L3.5 7.5H1.5Z" fill="currentColor" stroke="none" />
+      <path d="M9 3.5a4 4 0 010 5" />
+    </svg>
+  );
+}
+
+function MessageEntry({
+  msg,
+  conversation,
+  speaking,
+  onSpeak,
+}: {
+  msg: DisplayMessage;
+  conversation: Conversation | null;
+  speaking?: boolean;
+  onSpeak?: () => void;
+}) {
   const hasParts = 'parts' in msg && msg.parts != null;
   const [collapsed, setCollapsed] = useState(msg.role === 'tool' && !hasParts);
   const content = 'content' in msg ? msg.content : '';
@@ -57,6 +99,7 @@ function MessageEntry({ msg, conversation }: { msg: DisplayMessage; conversation
   const timeStr = 'timestampMillis' in msg && msg.timestampMillis != null && msg.timestampMillis > 0
     ? formatTime(msg.timestampMillis) : null;
   const displayName = roleDisplayName(msg.role, conversation);
+  const canSpeak = msg.role !== 'tool';
 
   const messageStyles =
     msg.role === 'user'
@@ -81,6 +124,19 @@ function MessageEntry({ msg, conversation }: { msg: DisplayMessage; conversation
           <span className="flex-1 text-[0.8125rem] text-text-dim whitespace-nowrap overflow-hidden text-ellipsis">
             {preview}
           </span>
+        )}
+        {canSpeak && onSpeak && (
+          <button
+            className={`flex items-center justify-center w-6 h-6 shrink-0 rounded-md border text-[0.65rem] font-medium cursor-pointer transition-all duration-150 ${
+              speaking
+                ? 'border-accent text-accent bg-bg-active'
+                : 'border-border bg-bg-input/60 text-text-dim hover:border-accent hover:text-accent hover:bg-bg-hover'
+            }`}
+            title={speaking ? 'Stop reading' : 'Read aloud'}
+            onClick={(e) => { e.stopPropagation(); onSpeak(); }}
+          >
+            <SpeakerIcon />
+          </button>
         )}
         <button
           className="flex items-center justify-center w-6 h-6 shrink-0 ml-auto rounded-md border border-border bg-bg-input/60 text-text-dim text-[0.65rem] font-medium cursor-pointer transition-all duration-150 hover:border-accent hover:text-accent hover:bg-bg-hover"
@@ -188,9 +244,20 @@ export default function ChatWindow({
   onUpdateBot,
 }: ChatWindowProps) {
   const [hideToolsAndThinking, setHideToolsAndThinking] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [speakingIdx, setSpeakingIdx] = useState<number | null>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
   const topRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const recognitionRef = useRef<any>(null);
+
+  // Stop recording and TTS when conversation changes
+  useEffect(() => {
+    recognitionRef.current?.stop();
+    setIsRecording(false);
+    speechSynthesis.cancel();
+    setSpeakingIdx(null);
+  }, [conversation?.id]);
 
   const visibleMessages = conversation
     ? getDisplayMessages(conversation.messages, hideToolsAndThinking, lastStreamedContent)
@@ -204,6 +271,7 @@ export default function ChatWindow({
   const isDirectChat = Boolean(
     conversation?.participant1 != null && conversation?.participant2 != null
   );
+
   const handleSend = () => {
     const trimmed = inputDraft.trim();
     if (!trimmed || sending || !hasProvider) return;
@@ -212,6 +280,70 @@ export default function ChatWindow({
 
   const scrollToTop = () => topRef.current?.scrollIntoView({ behavior: 'smooth' });
   const scrollToBottom = () => bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+
+  const toggleRecording = () => {
+    if (isRecording) {
+      recognitionRef.current?.stop();
+      setIsRecording(false);
+      return;
+    }
+    const SpeechRecognitionAPI =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognitionAPI) {
+      alert('Speech recognition is not supported in this browser. Try Chrome or Edge.');
+      return;
+    }
+    const recognition = new SpeechRecognitionAPI();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+    // Capture the base text at recording start; all mutations use this as ground truth
+    const startBase = inputDraft;
+    let committedText = startBase;
+    recognition.onresult = (event: any) => {
+      let interim = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const t = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          committedText += (committedText && !committedText.endsWith(' ') ? ' ' : '') + t.trim();
+        } else {
+          interim = t;
+        }
+      }
+      if (interim) {
+        onInputDraftChange(committedText + (committedText && !committedText.endsWith(' ') ? ' ' : '') + interim + ' […]');
+      } else {
+        onInputDraftChange(committedText);
+      }
+    };
+    recognition.onend = () => {
+      setIsRecording(false);
+      onInputDraftChange(committedText);
+    };
+    recognition.onerror = () => {
+      setIsRecording(false);
+      onInputDraftChange(committedText);
+    };
+    recognitionRef.current = recognition;
+    recognition.start();
+    setIsRecording(true);
+  };
+
+  const speakMessage = (msg: DisplayMessage, idx: number) => {
+    if (speakingIdx === idx) {
+      speechSynthesis.cancel();
+      setSpeakingIdx(null);
+      return;
+    }
+    const text = getMessagePlainText(msg, !hideToolsAndThinking);
+    if (!text.trim()) return;
+    speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.onend = () => setSpeakingIdx(null);
+    utterance.onerror = () => setSpeakingIdx(null);
+    setSpeakingIdx(idx);
+    speechSynthesis.speak(utterance);
+  };
 
   if (!conversation) {
     return (
@@ -250,7 +382,13 @@ export default function ChatWindow({
       <div className="flex-1 overflow-y-auto py-4 px-5 flex flex-col gap-3" ref={messagesRef}>
         <div ref={topRef} />
         {visibleMessages.map((msg, i) => (
-          <MessageEntry key={i} msg={msg} conversation={conversation} />
+          <MessageEntry
+            key={i}
+            msg={msg}
+            conversation={conversation}
+            speaking={speakingIdx === i}
+            onSpeak={() => speakMessage(msg, i)}
+          />
         ))}
         {sending && (() => {
           const assistantLabel = roleDisplayName('assistant', conversation);
@@ -331,6 +469,18 @@ export default function ChatWindow({
           rows={2}
           className="flex-1 py-2.5 px-3.5 bg-bg-input text-text border border-border rounded-lg font-inherit text-sm resize-none outline-none leading-normal focus:border-accent"
         />
+        <button
+          className={`w-9 h-9 flex items-center justify-center rounded-lg border cursor-pointer transition-all duration-150 shrink-0 ${
+            isRecording
+              ? 'bg-danger/20 border-danger text-danger animate-pulse'
+              : 'bg-bg-input text-text-dim border-border hover:border-accent hover:text-accent hover:bg-bg-hover'
+          } disabled:opacity-40 disabled:cursor-not-allowed`}
+          onClick={toggleRecording}
+          disabled={sending || !hasProvider}
+          title={isRecording ? 'Stop recording' : 'Speak (voice input)'}
+        >
+          <MicIcon />
+        </button>
         <div className="flex flex-col gap-1 items-end shrink-0">
           <select
             value={conversation.providerId ?? ''}
