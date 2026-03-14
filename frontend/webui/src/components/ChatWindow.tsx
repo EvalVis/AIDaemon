@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import type { Bot, ChatMessage, Conversation, FileAttachment, PendingToolApproval, Provider } from '../types';
 import type { StreamingContent, StreamPart } from '../App';
 import * as api from '../api';
@@ -271,7 +271,7 @@ function MessageEntry({
                     </pre>
                   </details>
                 ) : (
-                  <span key={i}>{part.content}</span>
+                  <span key={i}>{renderAnswerContent(part.content)}</span>
                 )
               )
             : userParts
@@ -298,6 +298,32 @@ function MessageEntry({
       )}
     </div>
   );
+}
+
+function renderAnswerContent(content: string): ReactNode {
+  const imgRegex = /!\[([^\]]*)\]\((\/api\/files\/[^)]+)\)/g;
+  const nodes: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = imgRegex.exec(content)) !== null) {
+    if (match.index > lastIndex) {
+      nodes.push(<span key={lastIndex}>{content.slice(lastIndex, match.index)}</span>);
+    }
+    nodes.push(
+      <img
+        key={match.index}
+        src={match[2]}
+        alt={match[1]}
+        className="max-w-full rounded-lg my-2 block"
+        style={{ maxHeight: '512px' }}
+      />
+    );
+    lastIndex = imgRegex.lastIndex;
+  }
+  if (lastIndex < content.length) {
+    nodes.push(<span key={lastIndex}>{content.slice(lastIndex)}</span>);
+  }
+  return nodes.length > 0 ? <>{nodes}</> : content;
 }
 
 function parseStructuredContent(content: string): StreamPart[] | null {
@@ -744,7 +770,7 @@ export default function ChatWindow({
                     </pre>
                   </details>
                 ) : (
-                  <span key={i} className="whitespace-pre-wrap break-words">{part.content}</span>
+                  <span key={i} className="whitespace-pre-wrap break-words">{renderAnswerContent(part.content)}</span>
                 )
               )}
               {streaming && streaming.parts.length === 0 && !streaming.reasoning && (
@@ -831,7 +857,7 @@ export default function ChatWindow({
             className="py-1.5 px-2.5 bg-bg-input text-text border border-border rounded-lg text-[0.8125rem] outline-none focus:border-accent min-w-[140px]"
           >
             <option value="">Select agent…</option>
-            {providers.map((p) => (
+            {providers.filter((p) => p.type !== 'DALLE_3').map((p) => (
               <option key={p.id} value={p.id}>{p.name}</option>
             ))}
           </select>

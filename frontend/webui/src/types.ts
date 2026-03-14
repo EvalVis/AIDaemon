@@ -26,7 +26,7 @@ export interface Conversation {
 export interface Provider {
   id: string;
   name: string;
-  type: 'OPENAI' | 'ANTHROPIC' | 'OLLAMA' | 'GEMINI';
+  type: 'OPENAI' | 'ANTHROPIC' | 'OLLAMA' | 'GEMINI' | 'DALLE_3';
   baseUrl: string;
   model: string;
 }

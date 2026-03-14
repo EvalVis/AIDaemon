@@ -340,6 +340,7 @@ function ProviderButton({
             <option value="ANTHROPIC">Anthropic</option>
             <option value="OLLAMA">Ollama</option>
             <option value="GEMINI">Gemini</option>
+            <option value="DALLE_3">DALL-E 3 (image generation)</option>
           </select>
           <input
             placeholder="API Key"
@@ -354,12 +355,14 @@ function ProviderButton({
             onChange={(e) => setBaseUrl(e.target.value)}
             className="p-1.5 px-2.5 bg-bg-input text-text border border-border rounded-lg text-[0.8125rem] outline-none focus:border-accent"
           />
-          <input
-            placeholder="Model (optional)"
-            value={model}
-            onChange={(e) => setModel(e.target.value)}
-            className="p-1.5 px-2.5 bg-bg-input text-text border border-border rounded-lg text-[0.8125rem] outline-none focus:border-accent"
-          />
+          {type !== 'DALLE_3' && (
+            <input
+              placeholder="Model (optional)"
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              className="p-1.5 px-2.5 bg-bg-input text-text border border-border rounded-lg text-[0.8125rem] outline-none focus:border-accent"
+            />
+          )}
           <button
             className="py-1.5 px-3 bg-accent text-white border-0 rounded-lg cursor-pointer text-[0.8125rem] transition-colors duration-150 hover:bg-accent-hover"
             onClick={handleSubmit}

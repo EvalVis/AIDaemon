@@ -30,6 +30,8 @@ public class ChatModelFactory {
             case ANTHROPIC -> createAnthropic(config, tools);
             case OLLAMA -> createOllama(config, tools);
             case GEMINI -> createGemini(config, tools);
+            case DALLE_3 -> throw new UnsupportedOperationException(
+                    "DALL-E 3 is an image generation provider and cannot be used as a chat model");
         };
     }
 

@@ -1,5 +1,5 @@
 package com.programmersdiary.aidaemon.provider;
 
 public enum ProviderType {
-    OPENAI, ANTHROPIC, OLLAMA, GEMINI
+    OPENAI, ANTHROPIC, OLLAMA, GEMINI, DALLE_3
 }
