@@ -1,4 +1,4 @@
-import type { Bot, Conversation, CreateBotRequest, CreateProviderRequest, Provider } from './types';
+import type { Bot, Conversation, CreateBotRequest, CreateProviderRequest, FileAttachment, Provider } from './types';
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
 
@@ -70,11 +70,19 @@ export interface StreamChunk {
   content: string;
 }
 
-export async function sendMessage(conversationId: string, message: string): Promise<string> {
+export async function uploadFile(file: File): Promise<FileAttachment> {
+  const formData = new FormData();
+  formData.append('file', file);
+  const res = await fetch('/api/files', { method: 'POST', body: formData });
+  if (!res.ok) throw new Error('File upload failed');
+  return res.json();
+}
+
+export async function sendMessage(conversationId: string, message: string, fileIds?: string[]): Promise<string> {
   const res = await fetch(`/api/conversations/${conversationId}/messages`, {
     method: 'POST',
     headers: JSON_HEADERS,
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({ message, fileIds: fileIds ?? [] }),
   });
   const data = await res.json();
   return data.response;
@@ -85,12 +93,13 @@ export function sendMessageStream(
   message: string,
   onChunk: (chunk: StreamChunk) => void,
   onDone: () => void,
-  onError: (err: unknown) => void
+  onError: (err: unknown) => void,
+  fileIds?: string[]
 ): void {
   fetch(`/api/conversations/${conversationId}/messages/stream`, {
     method: 'POST',
     headers: JSON_HEADERS,
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({ message, fileIds: fileIds ?? [] }),
   })
     .then(async (res) => {
       if (!res.ok || !res.body) {

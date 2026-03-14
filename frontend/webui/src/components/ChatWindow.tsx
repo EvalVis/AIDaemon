@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
-import type { Bot, ChatMessage, Conversation, PendingToolApproval, Provider } from '../types';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import type { Bot, ChatMessage, Conversation, FileAttachment, PendingToolApproval, Provider } from '../types';
 import type { StreamingContent, StreamPart } from '../App';
+import * as api from '../api';
 
 type DisplayMessage = ChatMessage | { role: 'assistant'; parts: StreamPart[] };
 
@@ -14,7 +15,7 @@ interface ChatWindowProps {
   lastStreamedContent: { reasoning: string; parts: StreamPart[] } | null;
   inputDraft: string;
   onInputDraftChange: (value: string) => void;
-  onSend: (message: string) => void;
+  onSend: (message: string, attachments?: FileAttachment[]) => void;
   onUpdateProvider: (conversationId: string, providerId: string | null) => void;
   onUpdateBot: (conversationId: string, botName: string | null) => void;
   pendingApprovals: PendingToolApproval[];
@@ -81,6 +82,53 @@ function SpeakerIcon() {
       <path d="M1.5 4.5H3.5L7 1.5V10.5L3.5 7.5H1.5Z" fill="currentColor" stroke="none" />
       <path d="M9 3.5a4 4 0 010 5" />
     </svg>
+  );
+}
+
+function PaperclipIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12.5 6.5L6 13a4 4 0 01-5.657-5.657l7-7a2.5 2.5 0 013.536 3.536L4.5 10.5a1 1 0 01-1.414-1.414L9 3" />
+    </svg>
+  );
+}
+
+function FileIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M7 1H3a1 1 0 00-1 1v8a1 1 0 001 1h6a1 1 0 001-1V4L7 1z" />
+      <path d="M7 1v3h3" />
+    </svg>
+  );
+}
+
+function FileChip({
+  file,
+  onRemove,
+  onClick,
+}: {
+  file: { id: string; name: string; mimeType: string };
+  onRemove?: () => void;
+  onClick?: () => void;
+}) {
+  return (
+    <div
+      className={`inline-flex items-center gap-1 py-0.5 pl-2 pr-1 rounded-md border border-border bg-bg-input text-text-dim text-xs max-w-[160px] ${onClick ? 'cursor-pointer hover:border-accent hover:text-text-bright' : ''}`}
+      title={file.name}
+      onClick={onClick}
+    >
+      <FileIcon />
+      <span className="truncate">{file.name}</span>
+      {onRemove && (
+        <button
+          className="ml-0.5 text-text-dim hover:text-danger text-[0.7rem] leading-none cursor-pointer shrink-0"
+          onClick={(e) => { e.stopPropagation(); onRemove(); }}
+          title="Remove"
+        >
+          ✕
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -200,6 +248,17 @@ function MessageEntry({
       </div>
       {!collapsed && (
         <div className="text-text-bright mt-1.5 min-w-0 break-words">
+          {'files' in msg && (msg as ChatMessage).files && (msg as ChatMessage).files!.length > 0 && (
+            <div className="flex flex-wrap gap-1 mb-1.5">
+              {(msg as ChatMessage).files!.map((f) => (
+                <FileChip
+                  key={f.id}
+                  file={f}
+                  onClick={() => window.open(`/api/files/${f.id}`, '_blank')}
+                />
+              ))}
+            </div>
+          )}
           {hasParts
             ? (msg as { role: 'assistant'; parts: StreamPart[] }).parts.map((part, i) =>
                 part.type === 'tool' ? (
@@ -282,6 +341,47 @@ function getDisplayMessages(
   return list;
 }
 
+// CSS class applied to inline file chips inside the contentEditable input div.
+// Must match classes used in JSX FileChip to survive Tailwind tree-shaking.
+const FILE_CHIP_CLASS =
+  'inline-flex items-center gap-1 py-0.5 pl-1.5 pr-1 rounded border border-border bg-bg-input text-text-dim text-xs mx-0.5 align-middle select-none';
+
+function editablePlainText(el: HTMLDivElement): string {
+  let text = '';
+  el.childNodes.forEach((n) => {
+    if (n.nodeType === Node.TEXT_NODE) text += n.textContent ?? '';
+  });
+  return text;
+}
+
+function editableHasContent(el: HTMLDivElement): boolean {
+  if (editablePlainText(el).trim()) return true;
+  return Array.from(el.childNodes).some(
+    (n) => n.nodeType === Node.ELEMENT_NODE && !!(n as HTMLElement).dataset.fileId
+  );
+}
+
+function extractEditableContent(el?: HTMLDivElement | null): { text: string; files: FileAttachment[] } {
+  if (!el) return { text: '', files: [] };
+  let text = '';
+  const files: FileAttachment[] = [];
+  el.childNodes.forEach((n) => {
+    if (n.nodeType === Node.TEXT_NODE) {
+      text += n.textContent ?? '';
+    } else if (n.nodeType === Node.ELEMENT_NODE) {
+      const span = n as HTMLElement;
+      if (span.dataset.fileId) {
+        files.push({ id: span.dataset.fileId, name: span.dataset.fileName ?? '', mimeType: span.dataset.fileMimeType ?? '' });
+      }
+    }
+  });
+  return { text: text.trim(), files };
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 export default function ChatWindow({
   headerTitle,
   conversation,
@@ -302,10 +402,16 @@ export default function ChatWindow({
   const [hideToolsAndThinking, setHideToolsAndThinking] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [speakingIdx, setSpeakingIdx] = useState<number | null>(null);
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const [hasContent, setHasContent] = useState(false);
   const messagesRef = useRef<HTMLDivElement>(null);
   const topRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const editableRef = useRef<HTMLDivElement>(null);
+  // true while we are the source of an inputDraft change — prevents syncing back
+  const isInternalChangeRef = useRef(false);
 
   // Stop recording and TTS when conversation changes
   useEffect(() => {
@@ -314,6 +420,25 @@ export default function ChatWindow({
     speechSynthesis.cancel();
     setSpeakingIdx(null);
   }, [conversation?.id]);
+
+  // Sync external inputDraft changes (e.g. speech recognition) into the editable div
+  // while preserving file chips already embedded in the div.
+  useLayoutEffect(() => {
+    if (isInternalChangeRef.current) {
+      isInternalChangeRef.current = false;
+      return;
+    }
+    const el = editableRef.current;
+    if (!el) return;
+    // Collect existing chip nodes to re-append after text
+    const chips = Array.from(el.childNodes).filter(
+      (n) => n.nodeType === Node.ELEMENT_NODE && (n as HTMLElement).dataset.fileId
+    );
+    el.innerHTML = '';
+    if (inputDraft) el.appendChild(document.createTextNode(inputDraft));
+    chips.forEach((c) => el.appendChild(c));
+    setHasContent(editableHasContent(el));
+  }, [inputDraft]);
 
   const visibleMessages = conversation
     ? getDisplayMessages(conversation.messages, hideToolsAndThinking, lastStreamedContent)
@@ -329,9 +454,97 @@ export default function ChatWindow({
   );
 
   const handleSend = () => {
-    const trimmed = inputDraft.trim();
-    if (!trimmed || sending || !hasProvider) return;
-    onSend(trimmed);
+    if (sending || !hasProvider) return;
+    const { text, files } = extractEditableContent(editableRef.current);
+    if (!text && files.length === 0) return;
+    const el = editableRef.current;
+    if (el) {
+      el.innerHTML = '';
+      isInternalChangeRef.current = true;
+      onInputDraftChange('');
+      setHasContent(false);
+    }
+    onSend(text, files.length > 0 ? files : undefined);
+  };
+
+  const handleEditableInput = () => {
+    const el = editableRef.current;
+    if (!el) return;
+    isInternalChangeRef.current = true;
+    onInputDraftChange(editablePlainText(el));
+    setHasContent(editableHasContent(el));
+  };
+
+  const handleEditableClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    if (target.dataset.removeChipId) {
+      const chip = target.closest('[data-file-id]') as HTMLElement | null;
+      chip?.remove();
+      isInternalChangeRef.current = true;
+      const el = editableRef.current;
+      if (el) {
+        onInputDraftChange(editablePlainText(el));
+        setHasContent(editableHasContent(el));
+      }
+    }
+  };
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    if (files.length === 0) return;
+    e.target.value = '';
+    setUploadingFile(true);
+    try {
+      const uploaded = await Promise.all(files.map((f) => api.uploadFile(f)));
+      uploaded.forEach(insertFileChip);
+    } catch {
+      // ignore upload errors silently
+    } finally {
+      setUploadingFile(false);
+    }
+  };
+
+  const insertFileChip = (attachment: FileAttachment) => {
+    const el = editableRef.current;
+    if (!el) return;
+    el.focus();
+    const chip = document.createElement('span');
+    chip.contentEditable = 'false';
+    chip.dataset.fileId = attachment.id;
+    chip.dataset.fileName = attachment.name;
+    chip.dataset.fileMimeType = attachment.mimeType;
+    chip.className = FILE_CHIP_CLASS;
+    chip.title = attachment.name;
+    chip.innerHTML =
+      `<svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M7 1H3a1 1 0 00-1 1v8a1 1 0 001 1h6a1 1 0 001-1V4L7 1z"/><path d="M7 1v3h3"/></svg>` +
+      `<span style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(attachment.name)}</span>` +
+      `<span data-remove-chip-id="${attachment.id}" style="cursor:pointer;margin-left:2px;opacity:0.7;flex-shrink:0" title="Remove">✕</span>`;
+
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount > 0 && el.contains(sel.getRangeAt(0).commonAncestorContainer)) {
+      const range = sel.getRangeAt(0);
+      range.deleteContents();
+      range.insertNode(chip);
+      range.setStartAfter(chip);
+      range.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(range);
+    } else {
+      el.appendChild(chip);
+    }
+    // Ensure a text node follows so typing continues naturally
+    const space = document.createTextNode('\u00A0');
+    chip.after(space);
+    const r = document.createRange();
+    r.setStart(space, 1);
+    r.collapse(true);
+    const s = window.getSelection();
+    s?.removeAllRanges();
+    s?.addRange(r);
+
+    isInternalChangeRef.current = true;
+    onInputDraftChange(editablePlainText(el));
+    setHasContent(true);
   };
 
   const scrollToTop = () => topRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -354,7 +567,7 @@ export default function ChatWindow({
     recognition.interimResults = true;
     recognition.lang = 'en-US';
     // Capture the base text at recording start; all mutations use this as ground truth
-    const startBase = inputDraft;
+    const startBase = editableRef.current ? editablePlainText(editableRef.current) : inputDraft;
     let committedText = startBase;
     recognition.onresult = (event: any) => {
       let interim = '';
@@ -519,19 +732,27 @@ export default function ChatWindow({
             ▼
           </button>
         </div>
-        <textarea
-          value={inputDraft}
-          onChange={(e) => onInputDraftChange(e.target.value)}
+        <div
+          ref={editableRef}
+          contentEditable={sending || !hasProvider ? 'false' : 'true'}
+          suppressContentEditableWarning
+          onInput={handleEditableInput}
+          onClick={handleEditableClick}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
               handleSend();
             }
           }}
-          placeholder="Type a message… (Enter to send, Shift+Enter for newline)"
-          disabled={sending || !hasProvider}
-          rows={2}
-          className="flex-1 py-2.5 px-3.5 bg-bg-input text-text border border-border rounded-lg font-inherit text-sm resize-none outline-none leading-normal focus:border-accent"
+          data-placeholder="Type a message… (Enter to send, Shift+Enter for newline)"
+          className={`flex-1 min-h-[3rem] max-h-40 overflow-y-auto py-2.5 px-3.5 bg-bg-input text-text border border-border rounded-lg text-sm leading-normal outline-none focus:border-accent empty:before:content-[attr(data-placeholder)] empty:before:text-text-dim ${sending || !hasProvider ? 'opacity-50 cursor-not-allowed' : ''}`}
+        />
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          className="hidden"
+          onChange={handleFileSelect}
         />
         <button
           className={`w-9 h-9 flex items-center justify-center rounded-lg border cursor-pointer transition-all duration-150 shrink-0 ${
@@ -544,6 +765,14 @@ export default function ChatWindow({
           title={isRecording ? 'Stop recording' : 'Speak (voice input)'}
         >
           <MicIcon />
+        </button>
+        <button
+          className="w-9 h-9 flex items-center justify-center rounded-lg border cursor-pointer transition-all duration-150 shrink-0 bg-bg-input text-text-dim border-border hover:border-accent hover:text-accent hover:bg-bg-hover disabled:opacity-40 disabled:cursor-not-allowed"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={sending || !hasProvider || uploadingFile}
+          title="Attach files"
+        >
+          <PaperclipIcon />
         </button>
         <div className="flex flex-col gap-1 items-end shrink-0">
           <select
@@ -574,7 +803,7 @@ export default function ChatWindow({
           <button
             className="py-2.5 px-5 bg-accent text-white border-0 rounded-lg cursor-pointer text-sm font-medium transition-colors duration-150 w-full hover:bg-accent-hover disabled:opacity-40 disabled:cursor-not-allowed"
             onClick={handleSend}
-            disabled={sending || !hasProvider || !inputDraft.trim()}
+            disabled={sending || !hasProvider || !hasContent}
           >
             Send
           </button>

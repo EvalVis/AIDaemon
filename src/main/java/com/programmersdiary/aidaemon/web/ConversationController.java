@@ -15,6 +15,10 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+record MessageRequest(String message, List<String> fileIds) {
+    MessageRequest { fileIds = fileIds != null ? fileIds : List.of(); }
+}
+
 @RestController
 @RequestMapping("/api/conversations")
 public class ConversationController {
@@ -83,15 +87,15 @@ public class ConversationController {
     }
 
     @PostMapping("/{id}/messages")
-    public Map<String, String> sendMessage(@PathVariable String id, @RequestBody Map<String, String> request) {
-        var response = conversationService.sendMessage(id, request.get("message"));
+    public Map<String, String> sendMessage(@PathVariable String id, @RequestBody MessageRequest request) {
+        var response = conversationService.sendMessage(id, request.message(), request.fileIds());
         return Map.of("response", response);
     }
 
     @PostMapping(value = "/{id}/messages/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter sendMessageStream(@PathVariable String id, @RequestBody Map<String, String> request) {
+    public SseEmitter sendMessageStream(@PathVariable String id, @RequestBody MessageRequest request) {
         var emitter = new SseEmitter(manualApprove ? NO_TIMEOUT : DEFAULT_TIMEOUT_MS);
-        conversationService.sendMessageStream(id, request.get("message"))
+        conversationService.sendMessageStream(id, request.message(), request.fileIds())
                 .subscribe(
                         chunk -> {
                             try {

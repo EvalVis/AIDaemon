@@ -2,12 +2,15 @@ package com.programmersdiary.aidaemon.chat;
 
 import com.programmersdiary.aidaemon.bot.BotService;
 import com.programmersdiary.aidaemon.delegation.DelegationService;
+import com.programmersdiary.aidaemon.files.FileAttachment;
+import com.programmersdiary.aidaemon.files.FileStorageService;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 
 @Service
@@ -16,13 +19,16 @@ public class ConversationService {
     private final ConversationRepository conversationRepository;
     private final ObjectProvider<DelegationService> delegationServiceProvider;
     private final BotService botService;
+    private final FileStorageService fileStorageService;
 
     public ConversationService(ConversationRepository conversationRepository,
                                ObjectProvider<DelegationService> delegationServiceProvider,
-                               BotService botService) {
+                               BotService botService,
+                               FileStorageService fileStorageService) {
         this.conversationRepository = conversationRepository;
         this.delegationServiceProvider = delegationServiceProvider;
         this.botService = botService;
+        this.fileStorageService = fileStorageService;
     }
 
     public Conversation create(String name, String providerId) {
@@ -107,12 +113,17 @@ public class ConversationService {
     }
 
     public String sendMessage(String conversationId, String userMessage) {
+        return sendMessage(conversationId, userMessage, List.of());
+    }
+
+    public String sendMessage(String conversationId, String userMessage, List<String> fileIds) {
         var conversation = conversationRepository.findById(conversationId)
                 .orElseThrow(() -> new IllegalArgumentException("Conversation not found: " + conversationId));
         if (conversation.providerId() == null || conversation.providerId().isBlank()) {
             throw new IllegalArgumentException("No agent selected for this conversation");
         }
-        conversation.messages().add(ChatMessage.of("user", userMessage));
+        var files = resolveFiles(fileIds);
+        conversation.messages().add(ChatMessage.ofWithFiles("user", userMessage, files));
         var bot = botService.getBot(conversation.botName());
         var senderIdentity = senderIdentity(conversation);
         var result = bot.chat(conversation.providerId(), conversation.messages(), conversationId, senderIdentity);
@@ -130,12 +141,17 @@ public class ConversationService {
     }
 
     public Flux<StreamChunk> sendMessageStream(String conversationId, String userMessage) {
+        return sendMessageStream(conversationId, userMessage, List.of());
+    }
+
+    public Flux<StreamChunk> sendMessageStream(String conversationId, String userMessage, List<String> fileIds) {
         var conversation = conversationRepository.findById(conversationId)
                 .orElseThrow(() -> new IllegalArgumentException("Conversation not found: " + conversationId));
         if (conversation.providerId() == null || conversation.providerId().isBlank()) {
             return Flux.error(new IllegalArgumentException("No agent selected for this conversation"));
         }
-        conversation.messages().add(ChatMessage.of("user", userMessage));
+        var files = resolveFiles(fileIds);
+        conversation.messages().add(ChatMessage.ofWithFiles("user", userMessage, files));
         conversationRepository.save(conversation);
 
         var bot = botService.getBot(conversation.botName());
@@ -150,6 +166,17 @@ public class ConversationService {
                 }
             }
         }, senderIdentity);
+    }
+
+    private List<FileAttachment> resolveFiles(List<String> fileIds) {
+        if (fileIds == null || fileIds.isEmpty()) return List.of();
+        return fileIds.stream()
+                .map(id -> {
+                    try { return fileStorageService.getAttachment(id); }
+                    catch (Exception e) { return null; }
+                })
+                .filter(Objects::nonNull)
+                .toList();
     }
 
     private static String senderIdentity(Conversation conversation) {

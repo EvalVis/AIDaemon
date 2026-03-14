@@ -4,28 +4,58 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.programmersdiary.aidaemon.bot.BotService;
 import com.programmersdiary.aidaemon.bot.PersonalMemoryEntry;
+import com.programmersdiary.aidaemon.files.FileAttachment;
+import com.programmersdiary.aidaemon.files.FileStorageService;
 import com.programmersdiary.aidaemon.skills.SkillsService;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.content.Media;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.util.MimeType;
+import org.springframework.util.MimeTypeUtils;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.*;
+import java.util.stream.Collectors;
 
 public class ChatContextBuilder {
 
     private static final List<String> REASONING_KEYS =
             List.of("thinking", "reasoningContent", "reasoning_content", "reasoning");
 
+    private static final Set<String> TEXT_SUBTYPES = Set.of(
+            "plain", "html", "xml", "csv", "markdown", "x-java-source", "x-java",
+            "javascript", "typescript", "x-python", "x-sh", "x-shellscript"
+    );
+
+    private static final Set<String> TEXT_APP_SUBTYPES = Set.of(
+            "json", "xml", "javascript", "typescript", "x-yaml", "yaml",
+            "toml", "x-toml", "graphql", "sql"
+    );
+
+    private static final Set<String> TEXT_EXTENSIONS = Set.of(
+            "java", "py", "js", "ts", "jsx", "tsx", "go", "rs", "kt", "cs",
+            "cpp", "c", "h", "rb", "php", "swift", "scala", "sh", "bash",
+            "txt", "md", "yaml", "yml", "toml", "ini", "xml", "html", "css",
+            "json", "sql", "graphql", "tf", "properties", "env"
+    );
+
     private final BotService botService;
     private final SkillsService skillsService;
+    private final FileStorageService fileStorageService;
     private final ObjectMapper objectMapper;
 
     public ChatContextBuilder(BotService botService, SkillsService skillsService) {
+        this(botService, skillsService, null);
+    }
+
+    public ChatContextBuilder(BotService botService, SkillsService skillsService, FileStorageService fileStorageService) {
         this.botService = botService;
         this.skillsService = skillsService;
+        this.fileStorageService = fileStorageService;
         this.objectMapper = new ObjectMapper();
     }
 
@@ -64,7 +94,7 @@ public class ChatContextBuilder {
                             + "Use retrieve_older_messages tool to fetch earlier messages if needed."));
             springMessages.addAll(conversationHistory(trimmed));
         }
-        springMessages.add(toNotCachedSpringMessage(filtered.get(filtered.size() - 1)));
+        springMessages.add(toCurrentMessage(filtered.get(filtered.size() - 1)));
         return springMessages;
     }
 
@@ -102,17 +132,17 @@ public class ChatContextBuilder {
     private List<Message> conversationHistory(List<ChatMessage> trimmedHistory) {
         var result = new ArrayList<Message>();
         if (!trimmedHistory.isEmpty()) {
-            trimmedHistory.forEach(m -> result.add(toNotCachedSpringMessage(m)));
+            trimmedHistory.forEach(m -> result.add(toHistorySpringMessage(m)));
             result.add(toCachedSpringMessage(trimmedHistory.get(trimmedHistory.size() - 1)));
         }
         return result;
     }
 
-    private Message toNotCachedSpringMessage(ChatMessage message) {
+    private Message toHistorySpringMessage(ChatMessage message) {
         return switch (message.role()) {
             case "system" -> new SystemMessage(message.content());
             case "assistant" -> new AssistantMessage(flattenStructuredContent(message.content()));
-            default -> new UserMessage(message.content());
+            default -> new UserMessage(contentWithFileReferences(message));
         };
     }
 
@@ -123,8 +153,99 @@ public class ChatContextBuilder {
                     .content(flattenStructuredContent(message.content()))
                     .properties(cacheControl())
                     .build();
-            default -> UserMessage.builder().text(message.content()).metadata(cacheControl()).build();
+            default -> UserMessage.builder().text(contentWithFileReferences(message)).metadata(cacheControl()).build();
         };
+    }
+
+    private Message toCurrentMessage(ChatMessage message) {
+        return switch (message.role()) {
+            case "system" -> new SystemMessage(message.content());
+            case "assistant" -> new AssistantMessage(flattenStructuredContent(message.content()));
+            default -> buildCurrentUserMessage(message);
+        };
+    }
+
+    private UserMessage buildCurrentUserMessage(ChatMessage message) {
+        var textBuilder = new StringBuilder(message.content() != null ? message.content() : "");
+        var mediaList = new ArrayList<Media>();
+
+        for (var file : message.files()) {
+            processFileForCurrentMessage(file, textBuilder, mediaList);
+        }
+
+        var builder = UserMessage.builder().text(textBuilder.toString());
+        if (!mediaList.isEmpty()) {
+            builder.media(mediaList);
+        }
+        return builder.build();
+    }
+
+    private void processFileForCurrentMessage(FileAttachment file, StringBuilder textBuilder, List<Media> mediaList) {
+        if (fileStorageService == null) {
+            appendFileReference(textBuilder, file);
+            return;
+        }
+        try {
+            var bytes = fileStorageService.getBytes(file.id());
+            var mimeType = parseSafeMimeType(file.mimeType());
+
+            if (isNativeMedia(mimeType)) {
+                mediaList.add(new Media(mimeType, new ByteArrayResource(bytes)));
+            } else if (isTextContent(mimeType, file.name())) {
+                var content = new String(bytes, StandardCharsets.UTF_8);
+                var ext = fileExtension(file.name());
+                textBuilder.append("\n\nFile: ").append(file.name())
+                        .append("\n```").append(ext).append("\n")
+                        .append(content).append("\n```");
+            } else {
+                var b64 = Base64.getEncoder().encodeToString(bytes);
+                textBuilder.append("\n\nFile: ").append(file.name())
+                        .append(" (").append(file.mimeType()).append(", base64-encoded):\n")
+                        .append(b64);
+            }
+        } catch (IOException e) {
+            appendFileReference(textBuilder, file);
+        }
+    }
+
+    private String contentWithFileReferences(ChatMessage message) {
+        var content = message.content() != null ? message.content() : "";
+        if (message.files().isEmpty()) return content;
+        var fileNames = message.files().stream()
+                .map(FileAttachment::name)
+                .collect(Collectors.joining(", "));
+        return content + "\n[Attached files: " + fileNames + "]";
+    }
+
+    private void appendFileReference(StringBuilder sb, FileAttachment file) {
+        sb.append("\n[File: ").append(file.name()).append("]");
+    }
+
+    private boolean isNativeMedia(MimeType mimeType) {
+        return "image".equals(mimeType.getType())
+                || "audio".equals(mimeType.getType())
+                || ("application".equals(mimeType.getType()) && "pdf".equals(mimeType.getSubtype()));
+    }
+
+    private boolean isTextContent(MimeType mimeType, String filename) {
+        if ("text".equals(mimeType.getType())) return true;
+        if ("application".equals(mimeType.getType()) && TEXT_APP_SUBTYPES.contains(mimeType.getSubtype())) return true;
+        var ext = fileExtension(filename);
+        return TEXT_EXTENSIONS.contains(ext);
+    }
+
+    private static MimeType parseSafeMimeType(String mimeTypeStr) {
+        try {
+            return MimeTypeUtils.parseMimeType(mimeTypeStr);
+        } catch (Exception e) {
+            return MimeTypeUtils.APPLICATION_OCTET_STREAM;
+        }
+    }
+
+    private static String fileExtension(String filename) {
+        if (filename == null) return "";
+        int dot = filename.lastIndexOf('.');
+        return dot >= 0 ? filename.substring(dot + 1).toLowerCase() : "";
     }
 
     private String flattenStructuredContent(String content) {

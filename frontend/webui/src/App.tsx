@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import Sidebar from './components/Sidebar';
 import ChatWindow from './components/ChatWindow';
 import * as api from './api';
-import type { Bot, Conversation, CreateBotRequest, CreateProviderRequest, PendingToolApproval, Provider } from './types';
+import type { Bot, Conversation, CreateBotRequest, CreateProviderRequest, FileAttachment, PendingToolApproval, Provider } from './types';
 
 export interface StreamPart {
   type: 'answer' | 'tool' | 'reasoning';
@@ -125,7 +125,7 @@ export default function App() {
     if (activeId === id) setActiveId(null);
   };
 
-  const handleSend = async (message: string) => {
+  const handleSend = async (message: string, attachments?: FileAttachment[]) => {
     if (!activeId) return;
     inputDraftRef.current = '';
     setDraftVersion((v) => v + 1);
@@ -134,10 +134,11 @@ export default function App() {
       pollIntervalRef.current = null;
     }
     setLastStreamedContent(null);
+    const files = attachments ?? [];
     setConversations((prev) =>
       prev.map((c) =>
         c.id === activeId
-          ? { ...c, messages: [...c.messages, { role: 'user', content: message, timestampMillis: Date.now() }] }
+          ? { ...c, messages: [...c.messages, { role: 'user', content: message, timestampMillis: Date.now(), files }] }
           : c,
       ),
     );
@@ -145,6 +146,7 @@ export default function App() {
     const initial: StreamingContent = { reasoning: '', parts: [] };
     setStreaming(initial);
     streamingRef.current = initial;
+    const fileIds = files.map((f) => f.id);
     api.sendMessageStream(
       activeId,
       message,
@@ -219,7 +221,8 @@ export default function App() {
         streamingRef.current = null;
         setPendingApprovals([]);
         api.fetchConversations(selectedBotRef.current ?? 'user').then(setConversations);
-      }
+      },
+      fileIds
     );
   };
 

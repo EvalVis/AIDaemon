@@ -4,6 +4,7 @@ import com.programmersdiary.aidaemon.chat.ChatMessage;
 import com.programmersdiary.aidaemon.chat.ChatService;
 import com.programmersdiary.aidaemon.chat.ContextConfig;
 import com.programmersdiary.aidaemon.chat.ContextWindowTrimmer;
+import com.programmersdiary.aidaemon.files.FileStorageService;
 import com.programmersdiary.aidaemon.skills.SkillsService;
 import org.springframework.stereotype.Service;
 
@@ -17,16 +18,19 @@ public class BotService {
     private final ContextConfig contextConfig;
     private final ChatService chatService;
     private final SkillsService skillsService;
+    private final FileStorageService fileStorageService;
 
-    public BotService(BotRepository repository, ContextConfig contextConfig, ChatService chatService, SkillsService skillsService) {
+    public BotService(BotRepository repository, ContextConfig contextConfig, ChatService chatService,
+                      SkillsService skillsService, FileStorageService fileStorageService) {
         this.repository = repository;
         this.contextConfig = contextConfig;
         this.chatService = chatService;
         this.skillsService = skillsService;
+        this.fileStorageService = fileStorageService;
     }
 
     public Bot getBot(String name) {
-        return new Bot(name, this, contextConfig, chatService, skillsService);
+        return new Bot(name, this, contextConfig, chatService, skillsService, fileStorageService);
     }
 
     public List<BotDefinition> listBots() {
