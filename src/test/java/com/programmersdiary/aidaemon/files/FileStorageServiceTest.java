@@ -18,7 +18,7 @@ class FileStorageServiceTest {
         var service = new FileStorageService(tempDir.toString());
         var data = "hello world".getBytes();
 
-        var attachment = service.store("test.txt", "text/plain", data);
+        var attachment = service.store("conv-1", "test.txt", "text/plain", data);
 
         assertNotNull(attachment.id());
         assertEquals("test.txt", attachment.name());
@@ -29,10 +29,9 @@ class FileStorageServiceTest {
     void store_savesFileWithExtension() throws IOException {
         var service = new FileStorageService(tempDir.toString());
 
-        var attachment = service.store("image.png", "image/png", new byte[]{1, 2, 3});
+        var attachment = service.store("conv-1", "image.png", "image/png", new byte[]{1, 2, 3});
 
-        // The stored binary file should have the .png extension inside the uploads/ subdir
-        var storedFile = tempDir.resolve("uploads").resolve(attachment.id() + ".png");
+        var storedFile = tempDir.resolve("conversations").resolve("conv-1").resolve("files").resolve(attachment.id() + ".png");
         assertTrue(storedFile.toFile().exists(), "Stored file should have .png extension");
     }
 
@@ -40,9 +39,9 @@ class FileStorageServiceTest {
     void store_fileWithNoExtension_savesWithoutExtension() throws IOException {
         var service = new FileStorageService(tempDir.toString());
 
-        var attachment = service.store("Makefile", "text/plain", new byte[]{1});
+        var attachment = service.store("conv-1", "Makefile", "text/plain", new byte[]{1});
 
-        var storedFile = tempDir.resolve("uploads").resolve(attachment.id());
+        var storedFile = tempDir.resolve("conversations").resolve("conv-1").resolve("files").resolve(attachment.id());
         assertTrue(storedFile.toFile().exists(), "File without extension stored as-is");
     }
 
@@ -51,7 +50,7 @@ class FileStorageServiceTest {
         var service = new FileStorageService(tempDir.toString());
         var data = new byte[]{1, 2, 3, 4};
 
-        var attachment = service.store("image.png", "image/png", data);
+        var attachment = service.store("conv-1", "image.png", "image/png", data);
         var retrieved = service.getBytes(attachment.id());
 
         assertArrayEquals(data, retrieved);
@@ -61,7 +60,7 @@ class FileStorageServiceTest {
     void getAttachment_returnsMetadata() throws IOException {
         var service = new FileStorageService(tempDir.toString());
 
-        var stored = service.store("doc.pdf", "application/pdf", new byte[]{10, 20});
+        var stored = service.store("conv-1", "doc.pdf", "application/pdf", new byte[]{10, 20});
         var retrieved = service.getAttachment(stored.id());
 
         assertEquals("doc.pdf", retrieved.name());
@@ -79,5 +78,16 @@ class FileStorageServiceTest {
     void getAttachment_throwsForUnknownId() throws IOException {
         var service = new FileStorageService(tempDir.toString());
         assertThrows(IOException.class, () -> service.getAttachment("nonexistent-id"));
+    }
+
+    @Test
+    void store_differentConversations_filesAreIsolated() throws IOException {
+        var service = new FileStorageService(tempDir.toString());
+
+        var a1 = service.store("conv-A", "file.txt", "text/plain", "aaa".getBytes());
+        var a2 = service.store("conv-B", "file.txt", "text/plain", "bbb".getBytes());
+
+        assertArrayEquals("aaa".getBytes(), service.getBytes(a1.id()));
+        assertArrayEquals("bbb".getBytes(), service.getBytes(a2.id()));
     }
 }

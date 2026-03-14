@@ -545,7 +545,7 @@ export default function ChatWindow({
     e.target.value = '';
     setUploadingFile(true);
     try {
-      const uploaded = await Promise.all(files.map((f) => api.uploadFile(f)));
+      const uploaded = await Promise.all(files.map((f) => api.uploadFile(conversation!.id, f)));
       uploaded.forEach(insertFileChip);
     } catch {
       // ignore upload errors silently

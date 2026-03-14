@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -32,13 +33,16 @@ public class ConversationRepository {
     void load() throws IOException {
         Files.createDirectories(conversationsDir);
         try (var stream = Files.list(conversationsDir)) {
-            stream.filter(p -> p.toString().endsWith(".json"))
-                    .forEach(p -> {
-                        try {
-                            var conv = objectMapper.readValue(p.toFile(), Conversation.class);
-                            conversations.put(conv.id(), conv);
-                        } catch (IOException e) {
-                            throw new UncheckedIOException(e);
+            stream.filter(Files::isDirectory)
+                    .forEach(dir -> {
+                        var conversationFile = dir.resolve("conversation.json");
+                        if (Files.exists(conversationFile)) {
+                            try {
+                                var conv = objectMapper.readValue(conversationFile.toFile(), Conversation.class);
+                                conversations.put(conv.id(), conv);
+                            } catch (IOException e) {
+                                throw new UncheckedIOException(e);
+                            }
                         }
                     });
         }
@@ -81,8 +85,20 @@ public class ConversationRepository {
     public boolean deleteById(String id) {
         var conversation = conversations.remove(id);
         if (conversation == null) return false;
+        var convDir = conversationsDir.resolve(id);
         try {
-            Files.deleteIfExists(conversationsDir.resolve(fileName(conversation)));
+            if (Files.exists(convDir)) {
+                try (var walk = Files.walk(convDir)) {
+                    walk.sorted(Comparator.reverseOrder())
+                            .forEach(path -> {
+                                try {
+                                    Files.deleteIfExists(path);
+                                } catch (IOException e) {
+                                    throw new UncheckedIOException(e);
+                                }
+                            });
+                }
+            }
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
@@ -91,17 +107,11 @@ public class ConversationRepository {
 
     private void persist(Conversation conversation) {
         try {
-            Files.createDirectories(conversationsDir);
-            objectMapper.writeValue(conversationsDir.resolve(fileName(conversation)).toFile(), conversation);
+            var convDir = conversationsDir.resolve(conversation.id());
+            Files.createDirectories(convDir);
+            objectMapper.writeValue(convDir.resolve("conversation.json").toFile(), conversation);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
-    }
-
-    private String fileName(Conversation conversation) {
-        if (conversation.isDirect()) {
-            return Conversation.canonicalId(conversation.participant1(), conversation.participant2()) + ".json";
-        }
-        return conversation.name() + "_" + conversation.id() + ".json";
     }
 }

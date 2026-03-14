@@ -70,10 +70,10 @@ export interface StreamChunk {
   content: string;
 }
 
-export async function uploadFile(file: File): Promise<FileAttachment> {
+export async function uploadFile(conversationId: string, file: File): Promise<FileAttachment> {
   const formData = new FormData();
   formData.append('file', file);
-  const res = await fetch('/api/files', { method: 'POST', body: formData });
+  const res = await fetch(`/api/conversations/${encodeURIComponent(conversationId)}/files`, { method: 'POST', body: formData });
   if (!res.ok) throw new Error('File upload failed');
   return res.json();
 }
