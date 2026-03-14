@@ -48,7 +48,6 @@ public class ChatModelFactory {
         var options = OpenAiChatOptions.builder()
                 .model(config.model() != null ? config.model() : "gpt-4o")
                 .toolCallbacks(tools)
-                .promptCacheKey("aidaemon:" + config.id())
                 .build();
         return OpenAiChatModel.builder()
                 .openAiApi(apiBuilder.build())
