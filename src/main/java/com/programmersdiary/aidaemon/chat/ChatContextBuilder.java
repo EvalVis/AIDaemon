@@ -166,6 +166,9 @@ public class ChatContextBuilder {
     }
 
     private UserMessage buildCurrentUserMessage(ChatMessage message) {
+        if (isUserParts(message.content())) {
+            return buildCurrentUserMessageFromParts(message.content());
+        }
         var textBuilder = new StringBuilder(message.content() != null ? message.content() : "");
         var mediaList = new ArrayList<Media>();
 
@@ -178,6 +181,69 @@ public class ChatContextBuilder {
             builder.media(mediaList);
         }
         return builder.build();
+    }
+
+    private UserMessage buildCurrentUserMessageFromParts(String content) {
+        var textBuilder = new StringBuilder();
+        var mediaList = new ArrayList<Media>();
+        try {
+            @SuppressWarnings("unchecked")
+            var data = (Map<String, Object>) objectMapper.readValue(content, Map.class);
+            @SuppressWarnings("unchecked")
+            var parts = (List<Map<String, Object>>) data.get("user_parts");
+            if (parts != null) {
+                for (var part : parts) {
+                    var type = String.valueOf(part.get("type"));
+                    if ("text".equals(type)) {
+                        var partContent = part.get("content");
+                        if (partContent != null) {
+                            if (textBuilder.length() > 0) textBuilder.append(" ");
+                            textBuilder.append(partContent);
+                        }
+                    } else if ("file".equals(type)) {
+                        var id = String.valueOf(part.get("id"));
+                        var name = String.valueOf(part.get("name"));
+                        var mimeType = String.valueOf(part.get("mimeType"));
+                        processFileForCurrentMessage(new FileAttachment(id, name, mimeType), textBuilder, mediaList);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            textBuilder.append(content);
+        }
+        var builder = UserMessage.builder().text(textBuilder.toString());
+        if (!mediaList.isEmpty()) builder.media(mediaList);
+        return builder.build();
+    }
+
+    private boolean isUserParts(String content) {
+        return content != null && content.trim().startsWith("{\"user_parts\":");
+    }
+
+    private String flattenUserParts(String content) {
+        try {
+            @SuppressWarnings("unchecked")
+            var data = (Map<String, Object>) objectMapper.readValue(content, Map.class);
+            @SuppressWarnings("unchecked")
+            var parts = (List<Map<String, Object>>) data.get("user_parts");
+            if (parts == null) return content;
+            var sb = new StringBuilder();
+            for (var part : parts) {
+                var type = String.valueOf(part.get("type"));
+                if ("text".equals(type)) {
+                    var partContent = part.get("content");
+                    if (partContent != null) {
+                        if (sb.length() > 0) sb.append(" ");
+                        sb.append(partContent);
+                    }
+                } else if ("file".equals(type)) {
+                    sb.append("\n[File: ").append(part.get("name")).append("]");
+                }
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            return content;
+        }
     }
 
     private void processFileForCurrentMessage(FileAttachment file, StringBuilder textBuilder, List<Media> mediaList) {
@@ -210,6 +276,9 @@ public class ChatContextBuilder {
 
     private String contentWithFileReferences(ChatMessage message) {
         var content = message.content() != null ? message.content() : "";
+        if (isUserParts(content)) {
+            return flattenUserParts(content);
+        }
         if (message.files().isEmpty()) return content;
         var fileNames = message.files().stream()
                 .map(FileAttachment::name)

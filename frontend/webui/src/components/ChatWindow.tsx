@@ -194,6 +194,7 @@ function MessageEntry({
   onSpeak?: () => void;
 }) {
   const hasParts = 'parts' in msg && msg.parts != null;
+  const userParts = msg.role === 'user' && 'content' in msg ? parseUserParts(msg.content) : null;
   const [collapsed, setCollapsed] = useState(msg.role === 'tool' && !hasParts);
   const content = 'content' in msg ? msg.content : '';
   const preview = content.slice(0, PREVIEW_LENGTH) + (content.length > PREVIEW_LENGTH ? '…' : '');
@@ -248,17 +249,6 @@ function MessageEntry({
       </div>
       {!collapsed && (
         <div className="text-text-bright mt-1.5 min-w-0 break-words">
-          {'files' in msg && (msg as ChatMessage).files && (msg as ChatMessage).files!.length > 0 && (
-            <div className="flex flex-wrap gap-1 mb-1.5">
-              {(msg as ChatMessage).files!.map((f) => (
-                <FileChip
-                  key={f.id}
-                  file={f}
-                  onClick={() => window.open(`/api/files/${f.id}`, '_blank')}
-                />
-              ))}
-            </div>
-          )}
           {hasParts
             ? (msg as { role: 'assistant'; parts: StreamPart[] }).parts.map((part, i) =>
                 part.type === 'tool' ? (
@@ -284,7 +274,26 @@ function MessageEntry({
                   <span key={i}>{part.content}</span>
                 )
               )
-            : content}
+            : userParts
+              ? userParts.map((p, i) =>
+                  p.type === 'file' ? (
+                    <FileChip key={i} file={p} onClick={() => window.open(`/api/files/${p.id}`, '_blank')} />
+                  ) : (
+                    <span key={i}>{p.content}</span>
+                  )
+                )
+              : (
+                <>
+                  {'files' in msg && (msg as ChatMessage).files && (msg as ChatMessage).files!.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mb-1.5">
+                      {(msg as ChatMessage).files!.map((f) => (
+                        <FileChip key={f.id} file={f} onClick={() => window.open(`/api/files/${f.id}`, '_blank')} />
+                      ))}
+                    </div>
+                  )}
+                  {content}
+                </>
+              )}
         </div>
       )}
     </div>
@@ -361,21 +370,59 @@ function editableHasContent(el: HTMLDivElement): boolean {
   );
 }
 
-function extractEditableContent(el?: HTMLDivElement | null): { text: string; files: FileAttachment[] } {
-  if (!el) return { text: '', files: [] };
-  let text = '';
+type UserPart = { type: 'text'; content: string } | { type: 'file'; id: string; name: string; mimeType: string };
+
+function parseUserParts(content: string): UserPart[] | null {
+  if (!content || !content.trim().startsWith('{"user_parts":')) return null;
+  try {
+    const data = JSON.parse(content) as { user_parts?: Array<{ type: string; content?: string; id?: string; name?: string; mimeType?: string }> };
+    if (!Array.isArray(data.user_parts)) return null;
+    return data.user_parts
+      .filter((p) => p.type === 'text' || p.type === 'file')
+      .map((p) =>
+        p.type === 'file'
+          ? { type: 'file' as const, id: p.id ?? '', name: p.name ?? '', mimeType: p.mimeType ?? '' }
+          : { type: 'text' as const, content: p.content ?? '' }
+      );
+  } catch {
+    return null;
+  }
+}
+
+function extractEditableContent(el?: HTMLDivElement | null): { parts: UserPart[]; files: FileAttachment[] } {
+  if (!el) return { parts: [], files: [] };
+  const rawParts: UserPart[] = [];
   const files: FileAttachment[] = [];
   el.childNodes.forEach((n) => {
     if (n.nodeType === Node.TEXT_NODE) {
-      text += n.textContent ?? '';
+      const text = n.textContent ?? '';
+      if (text) {
+        const last = rawParts[rawParts.length - 1];
+        if (last?.type === 'text') {
+          (last as { type: 'text'; content: string }).content += text;
+        } else {
+          rawParts.push({ type: 'text', content: text });
+        }
+      }
     } else if (n.nodeType === Node.ELEMENT_NODE) {
       const span = n as HTMLElement;
       if (span.dataset.fileId) {
-        files.push({ id: span.dataset.fileId, name: span.dataset.fileName ?? '', mimeType: span.dataset.fileMimeType ?? '' });
+        const file: FileAttachment = { id: span.dataset.fileId, name: span.dataset.fileName ?? '', mimeType: span.dataset.fileMimeType ?? '' };
+        rawParts.push({ type: 'file', id: file.id, name: file.name, mimeType: file.mimeType });
+        files.push(file);
       }
     }
   });
-  return { text: text.trim(), files };
+  // Trim leading/trailing whitespace from boundary text parts
+  if (rawParts.length > 0 && rawParts[0].type === 'text') {
+    (rawParts[0] as { type: 'text'; content: string }).content = (rawParts[0] as { type: 'text'; content: string }).content.trimStart();
+  }
+  const lastPart = rawParts[rawParts.length - 1];
+  if (lastPart?.type === 'text') {
+    (lastPart as { type: 'text'; content: string }).content = (lastPart as { type: 'text'; content: string }).content.trimEnd();
+  }
+  const parts = rawParts.filter((p) => p.type === 'file' || (p as { type: 'text'; content: string }).content.length > 0);
+  return { parts, files };
 }
 
 function escapeHtml(s: string): string {
@@ -455,8 +502,8 @@ export default function ChatWindow({
 
   const handleSend = () => {
     if (sending || !hasProvider) return;
-    const { text, files } = extractEditableContent(editableRef.current);
-    if (!text && files.length === 0) return;
+    const { parts, files } = extractEditableContent(editableRef.current);
+    if (parts.length === 0) return;
     const el = editableRef.current;
     if (el) {
       el.innerHTML = '';
@@ -464,7 +511,10 @@ export default function ChatWindow({
       onInputDraftChange('');
       setHasContent(false);
     }
-    onSend(text, files.length > 0 ? files : undefined);
+    const message = files.length > 0
+      ? JSON.stringify({ user_parts: parts })
+      : ((parts[0] as { type: 'text'; content: string })?.content ?? '');
+    onSend(message, files.length > 0 ? files : undefined);
   };
 
   const handleEditableInput = () => {

@@ -90,4 +90,40 @@ class ChatContextBuilderFilesTest {
         assertTrue(historyUserMsg.isPresent());
         assertTrue(((UserMessage) historyUserMsg.get()).getText().contains("data.csv"));
     }
+
+    @Test
+    void buildMessages_withUserPartsFormat_currentMessage_inlinesTextAndFile() throws IOException {
+        var javaContent = "public class Foo {}";
+        var attachment = fileStorageService.store("Foo.java", "text/x-java-source", javaContent.getBytes());
+        var userParts = "{\"user_parts\":[{\"type\":\"text\",\"content\":\"review this\"},{\"type\":\"file\",\"id\":\"%s\",\"name\":\"Foo.java\",\"mimeType\":\"text/x-java-source\"}]}"
+                .formatted(attachment.id());
+        var messages = List.of(ChatMessage.of("user", userParts));
+
+        var result = builder.buildMessages(messages, null, 0, 0, "sys", null);
+
+        var lastMsg = (UserMessage) result.get(result.size() - 1);
+        assertTrue(lastMsg.getText().contains("review this"), "should contain leading text");
+        assertTrue(lastMsg.getText().contains("Foo.java"), "should contain file name");
+        assertTrue(lastMsg.getText().contains("public class Foo {}"), "should contain file contents");
+    }
+
+    @Test
+    void buildMessages_withUserPartsFormat_historyMessage_flattensToPlainTextWithFileRef() throws IOException {
+        var attachment = fileStorageService.store("photo.png", "image/png", new byte[]{1, 2, 3});
+        var userParts = "{\"user_parts\":[{\"type\":\"text\",\"content\":\"look at this\"},{\"type\":\"file\",\"id\":\"%s\",\"name\":\"photo.png\",\"mimeType\":\"image/png\"}]}"
+                .formatted(attachment.id());
+        var historyMsg = ChatMessage.of("user", userParts);
+        var currentMsg = ChatMessage.of("user", "follow up");
+        var messages = List.of(historyMsg, ChatMessage.of("assistant", "ok"), currentMsg);
+
+        var result = builder.buildMessages(messages, null, 10000, 0, "sys", null);
+
+        var historyText = result.stream()
+                .filter(m -> m instanceof UserMessage)
+                .map(m -> ((UserMessage) m).getText())
+                .filter(t -> t.contains("look at this"))
+                .findFirst();
+        assertTrue(historyText.isPresent());
+        assertTrue(historyText.get().contains("photo.png"), "should include file name reference");
+    }
 }
