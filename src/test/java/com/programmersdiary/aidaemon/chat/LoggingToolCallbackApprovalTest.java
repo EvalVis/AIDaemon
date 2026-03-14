@@ -95,6 +95,42 @@ class LoggingToolCallbackApprovalTest {
     }
 
     @Test
+    void whenApprovedButExecutionTimesOut_emitsTimeoutChunk() throws Exception {
+        var def = ToolDefinition.builder().name("slowTool").description("desc").inputSchema("{}").build();
+        var delegate = mock(ToolCallback.class);
+        when(delegate.getToolDefinition()).thenReturn(def);
+        when(delegate.getToolMetadata()).thenReturn(ToolMetadata.builder().returnDirect(false).build());
+        when(delegate.call(anyString())).thenAnswer(inv -> {
+            Thread.sleep(10_000); // hangs
+            return "never";
+        });
+
+        var chunks = new ArrayList<StreamChunk>();
+        var approvalService = new ToolApprovalService();
+
+        var callThread = Executors.newSingleThreadExecutor();
+        var futureResult = callThread.submit(() -> {
+            var cb = new LoggingToolCallback(delegate, new ArrayList<>(), null, chunk -> {
+                chunks.add(chunk);
+                if (StreamChunk.TYPE_TOOL_PENDING.equals(chunk.type())) {
+                    try {
+                        var node = new com.fasterxml.jackson.databind.ObjectMapper().readTree(chunk.content());
+                        approvalService.approve(node.get("approvalId").asText());
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
+                }
+            }, approvalService, 1 /* 1 second execution timeout */);
+            return cb.call("{\"x\":1}");
+        });
+
+        var result = futureResult.get(5, TimeUnit.SECONDS);
+
+        assertTrue(result.contains("timed out"));
+        assertTrue(chunks.stream().anyMatch(c -> StreamChunk.TYPE_TOOL.equals(c.type()) && c.content().contains("timed out")));
+    }
+
+    @Test
     void whenRejected_skipsDelegateAndEmitsRejectionChunk() throws Exception {
         var delegate = stubDelegate("myTool", "should-not-run");
         var chunks = new ArrayList<StreamChunk>();
