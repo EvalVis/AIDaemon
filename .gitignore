@@ -33,4 +33,4 @@ build/
 .vscode/
 
 ### Claude ###
-.claude/settings.local.json.claude/git-conversation-history/
+.claude/settings.local.json
