@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import Sidebar from './components/Sidebar';
 import ChatWindow from './components/ChatWindow';
 import * as api from './api';
-import type { Bot, Conversation, CreateBotRequest, CreateProviderRequest, Provider } from './types';
+import type { Bot, Conversation, CreateBotRequest, CreateProviderRequest, PendingToolApproval, Provider } from './types';
 
 export interface StreamPart {
   type: 'answer' | 'tool' | 'reasoning';
@@ -22,6 +22,7 @@ export default function App() {
   const [selectedBot, setSelectedBot] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [streaming, setStreaming] = useState<StreamingContent | null>(null);
+  const [pendingApprovals, setPendingApprovals] = useState<PendingToolApproval[]>([]);
   const [lastStreamedContent, setLastStreamedContent] = useState<{ conversationId: string; reasoning: string; parts: StreamPart[] } | null>(null);
   const [, setDraftVersion] = useState(0);
   const inputDraftRef = useRef('');
@@ -148,6 +149,25 @@ export default function App() {
       activeId,
       message,
       (chunk) => {
+        if (chunk.type === 'tool_pending') {
+          try {
+            const approval = JSON.parse(chunk.content) as PendingToolApproval;
+            setPendingApprovals((prev) => [...prev, approval]);
+          } catch {
+            // skip malformed chunk
+          }
+          return;
+        }
+        if (chunk.type === 'tool') {
+          // Tool finished (approved or rejected) — remove matching pending approval
+          setPendingApprovals((prev) => {
+            if (prev.length === 0) return prev;
+            // Remove the first pending entry whose toolName appears in the tool chunk content
+            const idx = prev.findIndex((p) => chunk.content.includes(p.toolName));
+            if (idx === -1) return prev;
+            return [...prev.slice(0, idx), ...prev.slice(idx + 1)];
+          });
+        }
         setStreaming((prev) => {
           if (!prev) return prev;
           let next: StreamingContent;
@@ -179,6 +199,7 @@ export default function App() {
         setSending(false);
         setStreaming(null);
         streamingRef.current = null;
+        setPendingApprovals([]);
         const participant = selectedBotRef.current ?? 'user';
         const poll = () => {
           api.fetchConversations(participant).then((list) => setConversations([...list]));
@@ -196,9 +217,20 @@ export default function App() {
         setSending(false);
         setStreaming(null);
         streamingRef.current = null;
+        setPendingApprovals([]);
         api.fetchConversations(selectedBotRef.current ?? 'user').then(setConversations);
       }
     );
+  };
+
+  const handleApproveTool = async (approvalId: string) => {
+    setPendingApprovals((prev) => prev.filter((p) => p.approvalId !== approvalId));
+    await api.approveTool(approvalId);
+  };
+
+  const handleRejectTool = async (approvalId: string) => {
+    setPendingApprovals((prev) => prev.filter((p) => p.approvalId !== approvalId));
+    await api.rejectTool(approvalId);
   };
 
   return (
@@ -231,6 +263,9 @@ export default function App() {
         onSend={handleSend}
         onUpdateProvider={handleUpdateConversationProvider}
         onUpdateBot={handleUpdateConversationBot}
+        pendingApprovals={pendingApprovals}
+        onApproveTool={handleApproveTool}
+        onRejectTool={handleRejectTool}
       />
     </div>
   );

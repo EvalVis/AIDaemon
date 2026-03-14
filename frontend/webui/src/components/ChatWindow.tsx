@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Bot, ChatMessage, Conversation, Provider } from '../types';
+import type { Bot, ChatMessage, Conversation, PendingToolApproval, Provider } from '../types';
 import type { StreamingContent, StreamPart } from '../App';
 
 type DisplayMessage = ChatMessage | { role: 'assistant'; parts: StreamPart[] };
@@ -17,6 +17,9 @@ interface ChatWindowProps {
   onSend: (message: string) => void;
   onUpdateProvider: (conversationId: string, providerId: string | null) => void;
   onUpdateBot: (conversationId: string, botName: string | null) => void;
+  pendingApprovals: PendingToolApproval[];
+  onApproveTool: (approvalId: string) => void;
+  onRejectTool: (approvalId: string) => void;
 }
 
 const PREVIEW_LENGTH = 120;
@@ -78,6 +81,56 @@ function SpeakerIcon() {
       <path d="M1.5 4.5H3.5L7 1.5V10.5L3.5 7.5H1.5Z" fill="currentColor" stroke="none" />
       <path d="M9 3.5a4 4 0 010 5" />
     </svg>
+  );
+}
+
+function ToolApprovalCard({
+  approval,
+  onApprove,
+  onReject,
+}: {
+  approval: PendingToolApproval;
+  onApprove: () => void;
+  onReject: () => void;
+}) {
+  const [expanded, setExpanded] = useState(true);
+  return (
+    <div className="self-stretch mx-0 py-3 px-4 rounded-lg border border-accent/50 bg-accent/10 text-sm">
+      <div className="flex items-center gap-2 mb-2">
+        <span className="text-[0.6875rem] font-semibold uppercase tracking-wide text-accent">Tool approval required</span>
+        <span className="ml-1 font-mono text-text-bright text-xs bg-bg-input px-2 py-0.5 rounded border border-border">{approval.toolName}</span>
+      </div>
+      <div className="mb-3">
+        <button
+          className="text-[0.6875rem] text-text-dim hover:text-text-bright transition-colors duration-100 flex items-center gap-1"
+          onClick={() => setExpanded((v) => !v)}
+        >
+          {expanded ? '▾' : '▸'} Input
+        </button>
+        {expanded && (
+          <pre className="mt-1.5 p-2 bg-bg rounded-lg text-xs text-text-dim whitespace-pre-wrap break-words max-h-[160px] overflow-y-auto border border-border">
+            {(() => {
+              try { return JSON.stringify(JSON.parse(approval.toolInput), null, 2); }
+              catch { return approval.toolInput; }
+            })()}
+          </pre>
+        )}
+      </div>
+      <div className="flex gap-2">
+        <button
+          className="py-1.5 px-4 bg-accent text-white rounded-lg text-xs font-medium cursor-pointer transition-colors duration-150 hover:bg-accent-hover"
+          onClick={onApprove}
+        >
+          Approve
+        </button>
+        <button
+          className="py-1.5 px-4 bg-bg-input text-danger border border-danger/50 rounded-lg text-xs font-medium cursor-pointer transition-colors duration-150 hover:bg-danger/10"
+          onClick={onReject}
+        >
+          Reject
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -242,6 +295,9 @@ export default function ChatWindow({
   onSend,
   onUpdateProvider,
   onUpdateBot,
+  pendingApprovals,
+  onApproveTool,
+  onRejectTool,
 }: ChatWindowProps) {
   const [hideToolsAndThinking, setHideToolsAndThinking] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -435,6 +491,14 @@ export default function ChatWindow({
           </div>
           );
         })()}
+        {pendingApprovals.map((approval) => (
+          <ToolApprovalCard
+            key={approval.approvalId}
+            approval={approval}
+            onApprove={() => onApproveTool(approval.approvalId)}
+            onReject={() => onRejectTool(approval.approvalId)}
+          />
+        ))}
         <div ref={bottomRef} />
       </div>
 

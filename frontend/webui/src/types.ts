@@ -40,3 +40,9 @@ export interface CreateBotRequest {
   name: string;
   soul: string;
 }
+
+export interface PendingToolApproval {
+  approvalId: string;
+  toolName: string;
+  toolInput: string;
+}

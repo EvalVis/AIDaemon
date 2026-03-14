@@ -34,19 +34,25 @@ public class ChatService {
     private final McpService mcpService;
     private final ConversationRepository conversationRepository;
     private final boolean delegationEnabled;
+    private final boolean manualApprove;
+    private final ToolApprovalService toolApprovalService;
 
     public ChatService(ProviderConfigRepository configRepository,
                        ChatModelFactory chatModelFactory,
                        ChatToolCallbacksService toolCallbacksService,
                        McpService mcpService,
                        ConversationRepository conversationRepository,
-                       @Value("${aidaemon.delegation-enabled:false}") boolean delegationEnabled) {
+                       ToolApprovalService toolApprovalService,
+                       @Value("${aidaemon.delegation-enabled:false}") boolean delegationEnabled,
+                       @Value("${aidaemon.manual-approve:false}") boolean manualApprove) {
         this.configRepository = configRepository;
         this.chatModelFactory = chatModelFactory;
         this.toolCallbacksService = toolCallbacksService;
         this.mcpService = mcpService;
         this.conversationRepository = conversationRepository;
+        this.toolApprovalService = toolApprovalService;
         this.delegationEnabled = delegationEnabled;
+        this.manualApprove = manualApprove;
     }
 
     public ChatResult streamAndCollect(String providerId, List<Message> contextMessages, StreamRequestMetadata meta) {
@@ -63,19 +69,20 @@ public class ChatService {
         final var toolLog = new ArrayList<ChatMessage>();
         var sink = Sinks.many().unicast().<StreamChunk>onBackpressureBuffer();
         var onToolChunk = (Consumer<StreamChunk>) c -> sink.tryEmitNext(c);
+        var approvalServiceForTools = manualApprove ? toolApprovalService : null;
         var loggingTools = new ArrayList<ToolCallback>();
         for (var t : toolCallbacksService.buildToolCallbacks(meta, config.id())) {
-            loggingTools.add(new LoggingToolCallback(t, toolLog, null, onToolChunk));
+            loggingTools.add(new LoggingToolCallback(t, toolLog, null, onToolChunk, approvalServiceForTools));
         }
         mcpService.getToolCallbacksByServer().forEach((serverName, callbacks) ->
-                callbacks.forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog, serverName, onToolChunk))));
+                callbacks.forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog, serverName, onToolChunk, approvalServiceForTools))));
 
         final DelegationTools delegationTools = (delegationEnabled && meta.conversationId() != null)
                 ? new DelegationTools(conversationRepository, meta.conversationId(), providerId, meta.botName())
                 : null;
         if (delegationTools != null) {
             for (var t : org.springframework.ai.support.ToolCallbacks.from(delegationTools)) {
-                loggingTools.add(new LoggingToolCallback(t, toolLog, null, onToolChunk));
+                loggingTools.add(new LoggingToolCallback(t, toolLog, null, onToolChunk, approvalServiceForTools));
             }
         }
 

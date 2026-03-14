@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.programmersdiary.aidaemon.chat.Conversation;
 import com.programmersdiary.aidaemon.chat.ConversationService;
 import com.programmersdiary.aidaemon.chat.StreamChunk;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
@@ -19,11 +20,17 @@ import java.util.Map;
 public class ConversationController {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    /** 0L = no timeout (used when manual-approve is on so tool approval can wait indefinitely). */
+    private static final long NO_TIMEOUT = 0L;
+    private static final long DEFAULT_TIMEOUT_MS = 300_000L;
 
     private final ConversationService conversationService;
+    private final boolean manualApprove;
 
-    public ConversationController(ConversationService conversationService) {
+    public ConversationController(ConversationService conversationService,
+                                  @Value("${aidaemon.manual-approve:false}") boolean manualApprove) {
         this.conversationService = conversationService;
+        this.manualApprove = manualApprove;
     }
 
     @PostMapping
@@ -83,7 +90,7 @@ public class ConversationController {
 
     @PostMapping(value = "/{id}/messages/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter sendMessageStream(@PathVariable String id, @RequestBody Map<String, String> request) {
-        var emitter = new SseEmitter(300_000L);
+        var emitter = new SseEmitter(manualApprove ? NO_TIMEOUT : DEFAULT_TIMEOUT_MS);
         conversationService.sendMessageStream(id, request.get("message"))
                 .subscribe(
                         chunk -> {

@@ -12,6 +12,7 @@ aidaemon:
     api-key: ${SMITHERY_API_KEY}
     namespace: ${SMITHERY_NAMESPACE}
   shell-access: false
+  manual-approve: true
   delegation-enabled: false
   delegation-threshold-seconds: 30
   context-window:

@@ -66,7 +66,7 @@ export async function updateConversation(
 }
 
 export interface StreamChunk {
-  type: 'reasoning' | 'answer' | 'tool';
+  type: 'reasoning' | 'answer' | 'tool' | 'tool_pending';
   content: string;
 }
 
@@ -136,6 +136,14 @@ export function sendMessageStream(
       onDone();
     })
     .catch(onError);
+}
+
+export async function approveTool(approvalId: string): Promise<void> {
+  await fetch(`/api/tools/${encodeURIComponent(approvalId)}/approve`, { method: 'POST' });
+}
+
+export async function rejectTool(approvalId: string): Promise<void> {
+  await fetch(`/api/tools/${encodeURIComponent(approvalId)}/reject`, { method: 'POST' });
 }
 
 export async function deleteConversation(id: string): Promise<void> {
