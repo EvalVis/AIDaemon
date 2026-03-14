@@ -9,6 +9,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -148,6 +149,87 @@ class FileEditToolTest {
         assertEquals("DELETE", json.get("operation").asText());
         assertEquals("bye", json.get("oldContent").asText());
         assertTrue(json.get("newContent").isNull());
+    }
+
+    @Test
+    void editFile_whenShellDisabled_returnsError() {
+        var tool = new FileEditTool(shellAccess(false), id -> new CompletableFuture<>(), chunk -> {});
+        var result = tool.editFile(tempDir.resolve("test.txt").toString(),
+                List.of(new FileEditTool.FileEdit(1, "new content")));
+        assertTrue(result.toLowerCase().contains("disabled") || result.toLowerCase().contains("error"));
+    }
+
+    @Test
+    void editFile_whenApproved_replacesSpecifiedLines() throws Exception {
+        var filePath = tempDir.resolve("edit.txt");
+        Files.writeString(filePath, "line one\nline two\nline three");
+
+        callToolWithDecision(
+                (svc, chunks) -> new FileEditTool(shellAccess(true), svc::requestApproval, chunks::add),
+                tool -> tool.editFile(filePath.toString(),
+                        List.of(new FileEditTool.FileEdit(2, "line TWO"))),
+                true
+        );
+
+        assertEquals("line one\nline TWO\nline three", Files.readString(filePath));
+    }
+
+    @Test
+    void editFile_whenRejected_doesNotWriteFile() throws Exception {
+        var filePath = tempDir.resolve("no-edit.txt");
+        Files.writeString(filePath, "original content");
+
+        callToolWithDecision(
+                (svc, chunks) -> new FileEditTool(shellAccess(true), svc::requestApproval, chunks::add),
+                tool -> tool.editFile(filePath.toString(),
+                        List.of(new FileEditTool.FileEdit(1, "replaced"))),
+                false
+        );
+
+        assertEquals("original content", Files.readString(filePath));
+    }
+
+    @Test
+    void editFile_whenLineNumberOutOfRange_returnsError() {
+        var tool = new FileEditTool(shellAccess(true), id -> new CompletableFuture<>(), chunk -> {});
+        var filePath = tempDir.resolve("short.txt").toString();
+        try {
+            Files.writeString(Path.of(filePath), "only one line");
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+        var result = tool.editFile(filePath, List.of(new FileEditTool.FileEdit(99, "replacement")));
+        assertTrue(result.toLowerCase().contains("out of range") || result.toLowerCase().contains("error"));
+    }
+
+    @Test
+    void editFile_appliesMultipleLineEdits() throws Exception {
+        var filePath = tempDir.resolve("multi-edit.txt");
+        Files.writeString(filePath, "aaa\nbbb\nccc");
+
+        callToolWithDecision(
+                (svc, chunks) -> new FileEditTool(shellAccess(true), svc::requestApproval, chunks::add),
+                tool -> tool.editFile(filePath.toString(), List.of(
+                        new FileEditTool.FileEdit(1, "AAA"),
+                        new FileEditTool.FileEdit(3, "CCC")
+                )),
+                true
+        );
+
+        assertEquals("AAA\nbbb\nCCC", Files.readString(filePath));
+    }
+
+    @Test
+    void editFile_emitsPendingChunkWithOldAndNewContentDiff() throws Exception {
+        var filePath = tempDir.resolve("diff-emit.txt");
+        Files.writeString(filePath, "hello\nworld");
+
+        var json = capturePendingChunkJson(tool ->
+                tool.editFile(filePath.toString(), List.of(new FileEditTool.FileEdit(2, "Java"))));
+
+        assertEquals("MODIFY", json.get("operation").asText());
+        assertEquals("hello\nworld", json.get("oldContent").asText());
+        assertEquals("hello\nJava", json.get("newContent").asText());
     }
 
     // --- helpers ---

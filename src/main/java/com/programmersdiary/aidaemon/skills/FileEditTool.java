@@ -8,7 +8,9 @@ import org.springframework.ai.tool.annotation.ToolParam;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -61,6 +63,41 @@ public class FileEditTool {
             return "File modified: " + path;
         });
     }
+
+    @Tool(description = "Edit specific lines of an existing file by providing a list of line-number/newContent pairs. Each pair replaces that line (1-based) with the given content. Shows a diff preview to the user before writing. Only works when shell access is enabled.")
+    public String editFile(
+            @ToolParam(description = "Absolute path of the file to edit") String path,
+            @ToolParam(description = "List of line edits to apply") List<FileEdit> edits) {
+        if (!shellAccessService.isEnabled()) {
+            return "Error: Shell access is currently disabled.";
+        }
+        var oldContent = readFileOrEmpty(path);
+        var patched = applyEdits(oldContent, edits);
+        if (patched == null) {
+            return "Error: one or more line numbers are out of range.";
+        }
+        var newContent = patched;
+        return proposeAndExecute("editFile", "MODIFY", path, oldContent, newContent, () -> {
+            Files.writeString(Path.of(path), newContent);
+            return "File edited: " + path;
+        });
+    }
+
+    private static String applyEdits(String content, List<FileEdit> edits) {
+        var lines = new ArrayList<>(List.of(content.split("\n", -1)));
+        for (var edit : edits) {
+            var index = edit.lineNumber() - 1;
+            if (index < 0 || index >= lines.size()) {
+                return null;
+            }
+            lines.set(index, edit.newContent());
+        }
+        return String.join("\n", lines);
+    }
+
+    public record FileEdit(
+            @ToolParam(description = "1-based line number to replace") int lineNumber,
+            @ToolParam(description = "New content for that line") String newContent) {}
 
     @Tool(description = "Delete an existing file. Shows the current file content to the user before deleting. Only works when shell access is enabled.")
     public String deleteFile(
