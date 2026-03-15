@@ -61,7 +61,7 @@ class LoggingToolCallbackApprovalTest {
             try { Thread.sleep(50); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
             // Approve all pending (we'll use the captured ID from the chunk)
             if (capturedId.get() != null) {
-                approvalService.approve(capturedId.get());
+                approvalService.approve(capturedId.get(), "");
             }
         });
 
@@ -77,7 +77,7 @@ class LoggingToolCallbackApprovalTest {
                         var node = new com.fasterxml.jackson.databind.ObjectMapper().readTree(chunk.content());
                         capturedId.set(node.get("approvalId").asText());
                         // Approve right away
-                        approvalService.approve(capturedId.get());
+                        approvalService.approve(capturedId.get(), "");
                     } catch (Exception e) {
                         throw new RuntimeException(e);
                     }
@@ -115,7 +115,7 @@ class LoggingToolCallbackApprovalTest {
                 if (StreamChunk.TYPE_TOOL_PENDING.equals(chunk.type())) {
                     try {
                         var node = new com.fasterxml.jackson.databind.ObjectMapper().readTree(chunk.content());
-                        approvalService.approve(node.get("approvalId").asText());
+                        approvalService.approve(node.get("approvalId").asText(), "");
                     } catch (Exception e) {
                         throw new RuntimeException(e);
                     }
@@ -146,7 +146,7 @@ class LoggingToolCallbackApprovalTest {
                     try {
                         var node = new com.fasterxml.jackson.databind.ObjectMapper().readTree(chunk.content());
                         capturedId.set(node.get("approvalId").asText());
-                        approvalService.reject(capturedId.get());
+                        approvalService.reject(capturedId.get(), "");
                     } catch (Exception e) {
                         throw new RuntimeException(e);
                     }

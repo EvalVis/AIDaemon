@@ -19,8 +19,8 @@ interface ChatWindowProps {
   onUpdateProvider: (conversationId: string, providerId: string | null) => void;
   onUpdateBot: (conversationId: string, botName: string | null) => void;
   pendingApprovals: PendingToolApproval[];
-  onApproveTool: (approvalId: string) => void;
-  onRejectTool: (approvalId: string) => void;
+  onApproveTool: (approvalId: string, note: string) => void;
+  onRejectTool: (approvalId: string, note: string) => void;
 }
 
 const PREVIEW_LENGTH = 120;
@@ -178,10 +178,11 @@ function ToolApprovalCard({
   onReject,
 }: {
   approval: PendingToolApproval;
-  onApprove: () => void;
-  onReject: () => void;
+  onApprove: (note: string) => void;
+  onReject: (note: string) => void;
 }) {
   const [expanded, setExpanded] = useState(true);
+  const [note, setNote] = useState('');
   const isFileOp = Object.hasOwn(approval, 'operation') && approval.operation != null;
 
   const diff = isFileOp ? computeDiff(approval.oldContent, approval.newContent, approval.operation) : null;
@@ -249,16 +250,23 @@ function ToolApprovalCard({
           )
         )}
       </div>
+      <textarea
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        placeholder="Optional note (appended to tool output)…"
+        rows={2}
+        className="w-full mb-3 py-1.5 px-2.5 bg-bg text-text text-xs border border-border rounded-lg outline-none focus:border-accent resize-none placeholder:text-text-dim"
+      />
       <div className="flex gap-2">
         <button
           className="py-1.5 px-4 bg-accent text-white rounded-lg text-xs font-medium cursor-pointer transition-colors duration-150 hover:bg-accent-hover"
-          onClick={onApprove}
+          onClick={() => onApprove(note)}
         >
           Approve
         </button>
         <button
           className="py-1.5 px-4 bg-bg-input text-danger border border-danger/50 rounded-lg text-xs font-medium cursor-pointer transition-colors duration-150 hover:bg-danger/10"
-          onClick={onReject}
+          onClick={() => onReject(note)}
         >
           Reject
         </button>
@@ -897,8 +905,8 @@ export default function ChatWindow({
           <ToolApprovalCard
             key={approval.approvalId}
             approval={approval}
-            onApprove={() => onApproveTool(approval.approvalId)}
-            onReject={() => onRejectTool(approval.approvalId)}
+            onApprove={(note) => onApproveTool(approval.approvalId, note)}
+            onReject={(note) => onRejectTool(approval.approvalId, note)}
           />
         ))}
         <div ref={bottomRef} />

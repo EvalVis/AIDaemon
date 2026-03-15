@@ -82,8 +82,12 @@ public class LoggingToolCallback implements ToolCallback {
     @Override
     public String call(String toolInput) {
         if (approvalService != null) {
-            var approved = requestApproval(toolInput);
-            if (!approved) return buildRejectionResult(toolInput);
+            var decision = requestApproval(toolInput);
+            if (!decision.approved()) return buildRejectionResult(toolInput, decision.note());
+            var result = executeWithTimeout(() -> delegate.call(toolInput), toolInput);
+            var resultWithNote = appendNote(result, decision.note());
+            log(toolInput, resultWithNote);
+            return resultWithNote;
         }
         var result = executeWithTimeout(() -> delegate.call(toolInput), toolInput);
         log(toolInput, result);
@@ -93,8 +97,12 @@ public class LoggingToolCallback implements ToolCallback {
     @Override
     public String call(String toolInput, ToolContext toolContext) {
         if (approvalService != null) {
-            var approved = requestApproval(toolInput);
-            if (!approved) return buildRejectionResult(toolInput);
+            var decision = requestApproval(toolInput);
+            if (!decision.approved()) return buildRejectionResult(toolInput, decision.note());
+            var result = executeWithTimeout(() -> delegate.call(toolInput, toolContext), toolInput);
+            var resultWithNote = appendNote(result, decision.note());
+            log(toolInput, resultWithNote);
+            return resultWithNote;
         }
         var result = executeWithTimeout(() -> delegate.call(toolInput, toolContext), toolInput);
         log(toolInput, result);
@@ -119,7 +127,7 @@ public class LoggingToolCallback implements ToolCallback {
         }
     }
 
-    private boolean requestApproval(String toolInput) {
+    private ToolApprovalService.ApprovalDecision requestApproval(String toolInput) {
         var approvalId = UUID.randomUUID().toString();
         var toolName = delegate.getToolDefinition().name();
         var label = serverName != null ? serverName + " > " + toolName : toolName;
@@ -133,21 +141,16 @@ public class LoggingToolCallback implements ToolCallback {
             return future.get();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            return false;
+            return new ToolApprovalService.ApprovalDecision(false, "");
         } catch (ExecutionException e) {
-            return false;
+            return new ToolApprovalService.ApprovalDecision(false, "");
         }
     }
 
-    private String buildRejectionResult(String toolInput) {
-        var toolName = delegate.getToolDefinition().name();
-        var label = serverName != null ? serverName + " > " + toolName : toolName;
-        var content = "[" + label + "]\nInput: " + toolInput + "\nOutput: Tool call rejected by user.";
-        toolLog.add(ChatMessage.of("tool", content));
-        if (onToolChunk != null) {
-            onToolChunk.accept(new StreamChunk(StreamChunk.TYPE_TOOL, content));
-        }
-        return "Tool call was rejected by the user.";
+    private String buildRejectionResult(String toolInput, String note) {
+        var rejected = appendNote("Tool call rejected by user.", note);
+        log(toolInput, rejected);
+        return appendNote("Tool call was rejected by the user.", note);
     }
 
     private String buildTimeoutResult(String toolInput) {
@@ -160,6 +163,10 @@ public class LoggingToolCallback implements ToolCallback {
             onToolChunk.accept(new StreamChunk(StreamChunk.TYPE_TOOL, content));
         }
         return "Tool execution timed out.";
+    }
+
+    private static String appendNote(String output, String note) {
+        return (note != null && !note.isBlank()) ? output + "\nNote: " + note : output;
     }
 
     private void log(String input, String output) {

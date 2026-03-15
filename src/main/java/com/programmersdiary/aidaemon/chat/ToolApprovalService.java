@@ -8,25 +8,27 @@ import java.util.concurrent.ConcurrentHashMap;
 @Service
 public class ToolApprovalService {
 
-    private final ConcurrentHashMap<String, CompletableFuture<Boolean>> pending = new ConcurrentHashMap<>();
+    public record ApprovalDecision(boolean approved, String note) {}
 
-    public CompletableFuture<Boolean> requestApproval(String approvalId) {
-        var future = new CompletableFuture<Boolean>();
+    private final ConcurrentHashMap<String, CompletableFuture<ApprovalDecision>> pending = new ConcurrentHashMap<>();
+
+    public CompletableFuture<ApprovalDecision> requestApproval(String approvalId) {
+        var future = new CompletableFuture<ApprovalDecision>();
         pending.put(approvalId, future);
         return future;
     }
 
-    public void approve(String approvalId) {
+    public void approve(String approvalId, String note) {
         var future = pending.remove(approvalId);
         if (future != null) {
-            future.complete(true);
+            future.complete(new ApprovalDecision(true, note));
         }
     }
 
-    public void reject(String approvalId) {
+    public void reject(String approvalId, String note) {
         var future = pending.remove(approvalId);
         if (future != null) {
-            future.complete(false);
+            future.complete(new ApprovalDecision(false, note));
         }
     }
 

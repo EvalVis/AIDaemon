@@ -259,9 +259,9 @@ class FileEditToolTest {
         var pendingChunk = waitForPendingChunk(chunks);
         var changeId = JSON.readTree(pendingChunk.content()).get("approvalId").asText();
         if (approve) {
-            approvalService.approve(changeId);
+            approvalService.approve(changeId, "");
         } else {
-            approvalService.reject(changeId);
+            approvalService.reject(changeId, "");
         }
 
         return futureResult.get(5, TimeUnit.SECONDS);
@@ -278,7 +278,7 @@ class FileEditToolTest {
                 if (StreamChunk.TYPE_TOOL_PENDING.equals(chunk.type())) {
                     try {
                         var changeId = JSON.readTree(chunk.content()).get("approvalId").asText();
-                        approvalService.approve(changeId);
+                        approvalService.approve(changeId, "");
                     } catch (Exception e) {
                         throw new RuntimeException(e);
                     }

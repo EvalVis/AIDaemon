@@ -226,14 +226,14 @@ export default function App() {
     );
   };
 
-  const handleApproveTool = async (approvalId: string) => {
+  const handleApproveTool = async (approvalId: string, note: string) => {
     setPendingApprovals((prev) => prev.filter((p) => p.approvalId !== approvalId));
-    await api.approveTool(approvalId);
+    await api.approveTool(approvalId, note);
   };
 
-  const handleRejectTool = async (approvalId: string) => {
+  const handleRejectTool = async (approvalId: string, note: string) => {
     setPendingApprovals((prev) => prev.filter((p) => p.approvalId !== approvalId));
-    await api.rejectTool(approvalId);
+    await api.rejectTool(approvalId, note);
   };
 
 

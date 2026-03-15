@@ -147,12 +147,20 @@ export function sendMessageStream(
     .catch(onError);
 }
 
-export async function approveTool(approvalId: string): Promise<void> {
-  await fetch(`/api/tools/${encodeURIComponent(approvalId)}/approve`, { method: 'POST' });
+export async function approveTool(approvalId: string, note: string): Promise<void> {
+  await fetch(`/api/tools/${encodeURIComponent(approvalId)}/approve`, {
+    method: 'POST',
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ note }),
+  });
 }
 
-export async function rejectTool(approvalId: string): Promise<void> {
-  await fetch(`/api/tools/${encodeURIComponent(approvalId)}/reject`, { method: 'POST' });
+export async function rejectTool(approvalId: string, note: string): Promise<void> {
+  await fetch(`/api/tools/${encodeURIComponent(approvalId)}/reject`, {
+    method: 'POST',
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ note }),
+  });
 }
 
 export async function deleteConversation(id: string): Promise<void> {

@@ -2,6 +2,7 @@ package com.programmersdiary.aidaemon.skills;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.programmersdiary.aidaemon.chat.StreamChunk;
+import com.programmersdiary.aidaemon.chat.ToolApprovalService.ApprovalDecision;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 
@@ -22,11 +23,11 @@ public class FileEditTool {
     private static final ObjectMapper JSON = new ObjectMapper();
 
     private final ShellAccessService shellAccessService;
-    private final Function<String, CompletableFuture<Boolean>> requestApproval;
+    private final Function<String, CompletableFuture<ApprovalDecision>> requestApproval;
     private final Consumer<StreamChunk> onChunk;
 
     public FileEditTool(ShellAccessService shellAccessService,
-                        Function<String, CompletableFuture<Boolean>> requestApproval,
+                        Function<String, CompletableFuture<ApprovalDecision>> requestApproval,
                         Consumer<StreamChunk> onChunk) {
         this.shellAccessService = shellAccessService;
         this.requestApproval = requestApproval;
@@ -119,9 +120,10 @@ public class FileEditTool {
         var future = requestApproval.apply(changeId);
         onChunk.accept(new StreamChunk(StreamChunk.TYPE_TOOL_PENDING, pendingJson));
         try {
-            var approved = future.get();
-            if (!approved) {
-                return "File change rejected by user.";
+            var decision = future.get();
+            if (!decision.approved()) {
+                var note = decision.note();
+                return (note != null && !note.isBlank()) ? "File change rejected by user. Note: " + note : "File change rejected by user.";
             }
             return execution.execute();
         } catch (InterruptedException e) {
