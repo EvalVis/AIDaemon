@@ -7,7 +7,6 @@ import io.modelcontextprotocol.client.McpSyncClient;
 import io.modelcontextprotocol.client.transport.HttpClientSseClientTransport;
 import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport;
 import io.modelcontextprotocol.client.transport.ServerParameters;
-import io.modelcontextprotocol.client.transport.StdioClientTransport;
 import io.modelcontextprotocol.client.transport.WebClientStreamableHttpTransport;
 import io.modelcontextprotocol.json.McpJsonMapper;
 import io.modelcontextprotocol.spec.McpClientTransport;
@@ -39,11 +38,14 @@ public class McpService {
     private final ObjectMapper objectMapper = new ObjectMapper()
             .enable(SerializationFeature.INDENT_OUTPUT);
     private final Path mcpsDir;
+    private final Duration initTimeout;
     private final Map<String, McpSyncClient> clients = new ConcurrentHashMap<>();
 
     public McpService(
-            @Value("${aidaemon.config-dir:${user.home}/.aidaemon}") String configDir) {
+            @Value("${aidaemon.config-dir:${user.home}/.aidaemon}") String configDir,
+            @Value("${aidaemon.mcp-init-timeout-seconds:120}") int initTimeoutSeconds) {
         this.mcpsDir = Path.of(configDir, "mcps");
+        this.initTimeout = Duration.ofSeconds(initTimeoutSeconds);
     }
 
     @PostConstruct
@@ -90,6 +92,7 @@ public class McpService {
             var transport = createTransport(config);
             var client = McpClient.sync(transport)
                     .requestTimeout(Duration.ofSeconds(30))
+                    .initializationTimeout(initTimeout)
                     .build();
             client.initialize();
             clients.put(name, client);
@@ -164,7 +167,7 @@ public class McpService {
                     .env(env)
                     .build();
         }
-        return new StdioClientTransport(serverParams, McpJsonMapper.createDefault());
+        return new ResilientStdioTransport(serverParams, McpJsonMapper.createDefault());
     }
 
     public List<ToolCallback> getToolCallbacks() {
