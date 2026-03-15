@@ -3,15 +3,20 @@ package com.programmersdiary.aidaemon.chat;
 import com.programmersdiary.aidaemon.bot.BotService;
 import com.programmersdiary.aidaemon.files.FileAttachment;
 import com.programmersdiary.aidaemon.files.FileStorageService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
 
 @Service
 public class ConversationService {
+
+    private static final Logger log = LoggerFactory.getLogger(ConversationService.class);
 
     private final ConversationRepository conversationRepository;
     private final BotService botService;
@@ -49,7 +54,10 @@ public class ConversationService {
             throw new IllegalArgumentException("Target participant not found: " + target);
         }
         var conv = getOrCreateDirect(callerBotName, target, providerId);
-        return sendMessage(conv.id(), callerBotName, message, List.of());
+        conv.messages().add(ChatMessage.of(callerBotName, message));
+        conversationRepository.save(conv);
+        triggerBotReplyAsync(conv.id(), target);
+        return "Message sent to " + target + " (conversation: " + conv.id() + "). Awaiting their response.";
     }
 
     public Conversation getOrCreateDirect(String participant1, String participant2, String providerId) {
@@ -78,6 +86,22 @@ public class ConversationService {
                             System.currentTimeMillis(), p1, p2, true);
                     return conversationRepository.save(conv);
                 });
+    }
+
+    private void triggerBotReplyAsync(String conversationId, String botName) {
+        CompletableFuture.runAsync(() -> {
+            try {
+                var conv = conversationRepository.findById(conversationId).orElse(null);
+                if (conv == null || conv.providerId() == null || conv.providerId().isBlank()) return;
+                var bot = botService.getBot(botName);
+                var senderIdentity = senderIdentity(conv, botName);
+                var result = bot.chat(conv.providerId(), conv.messages(), conversationId, senderIdentity);
+                conv.messages().add(ChatMessage.of(botName, result.assistantContent()));
+                conversationRepository.save(conv);
+            } catch (Exception e) {
+                log.error("Async bot reply failed for bot '{}' on conversation '{}'", botName, conversationId, e);
+            }
+        });
     }
 
     private void validateParticipant(String participant) {

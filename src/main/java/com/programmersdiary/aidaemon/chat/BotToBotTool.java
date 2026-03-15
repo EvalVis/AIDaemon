@@ -32,7 +32,11 @@ public class BotToBotTool {
                 : "Participants: " + String.join(", ", participants);
     }
 
-    @Tool(description = "Send a message to a participant. Use 'user' to write a message into the human's chat with you. Use a bot name to send a message to another bot and get its reply.")
+    @Tool(description = """
+            Send a message to a participant.
+            Use 'user' to write into the human's conversation with you.
+            Use a bot name to send an async message to another bot — the bot will respond in its own time. \
+            You will be notified when you get a reply.""")
     public String messageBot(
             @ToolParam(description = "Target participant: 'user' or a bot name") String targetName,
             @ToolParam(description = "The message to send") String message) {
