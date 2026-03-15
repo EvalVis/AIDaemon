@@ -466,12 +466,26 @@ function getDisplayMessages(
 const FILE_CHIP_CLASS =
   'inline-flex items-center gap-1 py-0.5 pl-1.5 pr-1 rounded border border-border bg-bg-input text-text-dim text-xs mx-0.5 align-middle select-none';
 
-function editablePlainText(el: HTMLDivElement): string {
-  let text = '';
-  el.childNodes.forEach((n) => {
-    if (n.nodeType === Node.TEXT_NODE) text += n.textContent ?? '';
+const BLOCK_TAGS = new Set(['DIV', 'P', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6']);
+
+function walkPlainText(node: Node): string {
+  if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? '';
+  if (node.nodeType !== Node.ELEMENT_NODE) return '';
+  const el = node as HTMLElement;
+  if (el.dataset.fileId) return '';
+  if (el.tagName === 'BR') return '\n';
+  const isBlock = BLOCK_TAGS.has(el.tagName);
+  const parts: string[] = [];
+  el.childNodes.forEach((child, i) => {
+    const s = walkPlainText(child);
+    if (isBlock && i > 0 && s) parts.push('\n');
+    parts.push(s);
   });
-  return text;
+  return parts.join('');
+}
+
+function editablePlainText(el: HTMLDivElement): string {
+  return walkPlainText(el);
 }
 
 function editableHasContent(el: HTMLDivElement): boolean {
@@ -500,31 +514,45 @@ function parseUserParts(content: string): UserPart[] | null {
   }
 }
 
+function appendTextPart(rawParts: UserPart[], text: string): void {
+  if (!text) return;
+  const last = rawParts[rawParts.length - 1];
+  if (last?.type === 'text') {
+    (last as { type: 'text'; content: string }).content += text;
+  } else {
+    rawParts.push({ type: 'text', content: text });
+  }
+}
+
+function walkEditableContent(node: Node, rawParts: UserPart[], files: FileAttachment[]): void {
+  if (node.nodeType === Node.TEXT_NODE) {
+    appendTextPart(rawParts, node.textContent ?? '');
+    return;
+  }
+  if (node.nodeType !== Node.ELEMENT_NODE) return;
+  const el = node as HTMLElement;
+  if (el.dataset.fileId) {
+    const file: FileAttachment = { id: el.dataset.fileId, name: el.dataset.fileName ?? '', mimeType: el.dataset.fileMimeType ?? '' };
+    rawParts.push({ type: 'file', id: file.id, name: file.name, mimeType: file.mimeType });
+    files.push(file);
+    return;
+  }
+  if (el.tagName === 'BR') {
+    appendTextPart(rawParts, '\n');
+    return;
+  }
+  const isBlock = BLOCK_TAGS.has(el.tagName);
+  el.childNodes.forEach((child, i) => {
+    if (isBlock && i > 0) appendTextPart(rawParts, '\n');
+    walkEditableContent(child, rawParts, files);
+  });
+}
+
 function extractEditableContent(el?: HTMLDivElement | null): { parts: UserPart[]; files: FileAttachment[] } {
   if (!el) return { parts: [], files: [] };
   const rawParts: UserPart[] = [];
   const files: FileAttachment[] = [];
-  el.childNodes.forEach((n) => {
-    if (n.nodeType === Node.TEXT_NODE) {
-      const text = n.textContent ?? '';
-      if (text) {
-        const last = rawParts[rawParts.length - 1];
-        if (last?.type === 'text') {
-          (last as { type: 'text'; content: string }).content += text;
-        } else {
-          rawParts.push({ type: 'text', content: text });
-        }
-      }
-    } else if (n.nodeType === Node.ELEMENT_NODE) {
-      const span = n as HTMLElement;
-      if (span.dataset.fileId) {
-        const file: FileAttachment = { id: span.dataset.fileId, name: span.dataset.fileName ?? '', mimeType: span.dataset.fileMimeType ?? '' };
-        rawParts.push({ type: 'file', id: file.id, name: file.name, mimeType: file.mimeType });
-        files.push(file);
-      }
-    }
-  });
-  // Trim leading/trailing whitespace from boundary text parts
+  walkEditableContent(el, rawParts, files);
   if (rawParts.length > 0 && rawParts[0].type === 'text') {
     (rawParts[0] as { type: 'text'; content: string }).content = (rawParts[0] as { type: 'text'; content: string }).content.trimStart();
   }
