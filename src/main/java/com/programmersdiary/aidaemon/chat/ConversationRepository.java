@@ -99,6 +99,13 @@ public class ConversationRepository {
         return conversation;
     }
 
+    public synchronized void addMessage(String conversationId, ChatMessage message) {
+        var conv = conversations.get(conversationId);
+        if (conv == null) return;
+        conv.messages().add(message);
+        persist(conv);
+    }
+
     public boolean deleteById(String id) {
         var conversation = conversations.remove(id);
         if (conversation == null) return false;

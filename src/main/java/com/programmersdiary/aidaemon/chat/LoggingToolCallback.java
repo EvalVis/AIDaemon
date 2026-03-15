@@ -131,12 +131,7 @@ public class LoggingToolCallback implements ToolCallback {
         var approvalId = UUID.randomUUID().toString();
         var toolName = delegate.getToolDefinition().name();
         var label = serverName != null ? serverName + " > " + toolName : toolName;
-        var pendingContent = buildPendingJson(approvalId, label, toolInput);
-        // Register the future BEFORE emitting the chunk so the consumer can approve/reject immediately
-        var future = approvalService.requestApproval(approvalId);
-        if (onToolChunk != null) {
-            onToolChunk.accept(new StreamChunk(StreamChunk.TYPE_TOOL_PENDING, pendingContent));
-        }
+        var future = approvalService.requestApproval(approvalId, label, toolInput);
         try {
             return future.get();
         } catch (InterruptedException e) {

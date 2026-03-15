@@ -67,11 +67,6 @@ export async function updateConversation(
   return res.json();
 }
 
-export interface StreamChunk {
-  type: 'reasoning' | 'answer' | 'tool' | 'tool_pending';
-  content: string;
-}
-
 export async function uploadFile(conversationId: string, file: File): Promise<FileAttachment> {
   const formData = new FormData();
   formData.append('file', file);
@@ -80,74 +75,23 @@ export async function uploadFile(conversationId: string, file: File): Promise<Fi
   return res.json();
 }
 
-export async function sendMessage(conversationId: string, message: string, fileIds?: string[]): Promise<string> {
+export async function sendMessage(
+  conversationId: string,
+  message: string,
+  fileIds?: string[],
+  notifyParticipants?: string[]
+): Promise<void> {
   const res = await fetch(`/api/conversations/${conversationId}/messages`, {
     method: 'POST',
     headers: JSON_HEADERS,
-    body: JSON.stringify({ message, fileIds: fileIds ?? [] }),
+    body: JSON.stringify({ message, fileIds: fileIds ?? [], notifyParticipants: notifyParticipants ?? [] }),
   });
-  const data = await res.json();
-  return data.response;
+  if (!res.ok) throw new Error(await res.text() || res.statusText);
 }
 
-export function sendMessageStream(
-  conversationId: string,
-  message: string,
-  onChunk: (chunk: StreamChunk) => void,
-  onDone: () => void,
-  onError: (err: unknown) => void,
-  fileIds?: string[],
-  notifyParticipants?: string[]
-): void {
-  fetch(`/api/conversations/${conversationId}/messages/stream`, {
-    method: 'POST',
-    headers: JSON_HEADERS,
-    body: JSON.stringify({ message, fileIds: fileIds ?? [], notifyParticipants: notifyParticipants ?? [] }),
-  })
-    .then(async (res) => {
-      if (!res.ok || !res.body) {
-        onError(new Error(res.statusText));
-        return;
-      }
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const events = buffer.split('\n\n');
-        buffer = events.pop() ?? '';
-        for (const event of events) {
-          const dataLine = event.split('\n').find((l) => l.startsWith('data:'));
-          if (dataLine) {
-            const data = dataLine.slice(5).trim();
-            if (data) {
-              try {
-                onChunk(JSON.parse(data) as StreamChunk);
-              } catch {
-                // skip non-JSON
-              }
-            }
-          }
-        }
-      }
-      if (buffer.trim()) {
-        const dataLine = buffer.split('\n').find((l) => l.startsWith('data:'));
-        if (dataLine) {
-          const data = dataLine.slice(5).trim();
-          if (data) {
-            try {
-              onChunk(JSON.parse(data) as StreamChunk);
-            } catch {
-              // skip
-            }
-          }
-        }
-      }
-      onDone();
-    })
-    .catch(onError);
+export async function fetchPendingApprovals(): Promise<{ approvalId: string; toolName: string; toolInput: string }[]> {
+  const res = await fetch('/api/tools/pending');
+  return res.json();
 }
 
 export async function approveTool(approvalId: string, note: string): Promise<void> {

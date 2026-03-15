@@ -6,18 +6,19 @@ import com.programmersdiary.aidaemon.files.FileStorageService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import reactor.core.publisher.Flux;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executors;
 
 @Service
 public class ConversationService {
 
     private static final Logger log = LoggerFactory.getLogger(ConversationService.class);
+    private static final java.util.concurrent.ExecutorService BOT_EXECUTOR = Executors.newCachedThreadPool();
 
     private final ConversationRepository conversationRepository;
     private final BotService botService;
@@ -65,12 +66,11 @@ public class ConversationService {
                 var bot = botService.getBot(botName);
                 var senderIdentity = lastBotSenderOf(conv, botName);
                 var result = bot.chat(conv.providerId(), conv.messages(), conversationId, senderIdentity);
-                conv.messages().add(ChatMessage.of(botName, result.assistantContent()));
-                conversationRepository.save(conv);
+                conversationRepository.addMessage(conversationId, ChatMessage.of(botName, result.assistantContent()));
             } catch (Exception e) {
-                log.error("Async bot reply failed for bot '{}' on conversation '{}'", botName, conversationId, e);
+                log.error("triggerBotReplyAsync failed for bot='{}' conv='{}'", botName, conversationId, e);
             }
-        });
+        }, BOT_EXECUTOR);
     }
 
     private static String lastBotSenderOf(Conversation conv, String excludeBotName) {
@@ -95,46 +95,33 @@ public class ConversationService {
         conversationRepository.save(conversation);
     }
 
-    public Flux<StreamChunk> sendMessageStream(String conversationId, String userMessage) {
-        return sendMessageStream(conversationId, userMessage, List.of(), List.of());
+    public void sendMessage(String conversationId, String userMessage) {
+        sendMessage(conversationId, "user", userMessage, List.of(), List.of());
     }
 
-    public Flux<StreamChunk> sendMessageStream(String conversationId, String userMessage, List<String> fileIds) {
-        return sendMessageStream(conversationId, "user", userMessage, fileIds, List.of());
+    public void sendMessage(String conversationId, String userMessage, List<String> fileIds) {
+        sendMessage(conversationId, "user", userMessage, fileIds, List.of());
     }
 
-    public Flux<StreamChunk> sendMessageStream(String conversationId, String userMessage,
-                                               List<String> fileIds, List<String> notifyParticipants) {
-        return sendMessageStream(conversationId, "user", userMessage, fileIds, notifyParticipants);
+    public void sendMessage(String conversationId, String userMessage,
+                            List<String> fileIds, List<String> notifyParticipants) {
+        sendMessage(conversationId, "user", userMessage, fileIds, notifyParticipants);
     }
 
-    public Flux<StreamChunk> sendMessageStream(String conversationId, String senderParticipant, String message,
-                                               List<String> fileIds, List<String> notifyParticipants) {
+    public void sendMessage(String conversationId, String senderParticipant, String message,
+                            List<String> fileIds, List<String> notifyParticipants) {
         var conversation = conversationRepository.findById(conversationId)
                 .orElseThrow(() -> new IllegalArgumentException("Conversation not found: " + conversationId));
         if (conversation.providerId() == null || conversation.providerId().isBlank()) {
-            return Flux.error(new IllegalArgumentException("No agent selected for this conversation"));
+            throw new IllegalArgumentException("No agent selected for this conversation");
         }
         var files = resolveFiles(fileIds);
-        conversation.messages().add(ChatMessage.ofWithFiles(senderParticipant, message, files));
-        conversationRepository.save(conversation);
+        conversationRepository.addMessage(conversationId, ChatMessage.ofWithFiles(senderParticipant, message, files));
 
         var botsToNotify = notifyParticipants != null ? notifyParticipants : List.<String>of();
-
-        if (botsToNotify.size() == 1) {
-            var replyingBotName = botsToNotify.get(0);
-            var bot = botService.getBot(replyingBotName);
-            var senderIdentity = "user".equalsIgnoreCase(senderParticipant) ? null : senderParticipant;
-            return bot.chatStream(conversation.providerId(), conversation.messages(), conversationId, result -> {
-                conversation.messages().add(ChatMessage.of(replyingBotName, result.assistantContent()));
-                conversationRepository.save(conversation);
-            }, senderIdentity);
-        }
-
         for (var botName : botsToNotify) {
             triggerBotReplyAsync(conversationId, botName);
         }
-        return Flux.empty();
     }
 
     private List<FileAttachment> resolveFiles(List<String> fileIds) {

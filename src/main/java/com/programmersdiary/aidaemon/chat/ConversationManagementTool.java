@@ -91,10 +91,10 @@ public class ConversationManagementTool {
             @ToolParam(description = "Your message") String message,
             @ToolParam(description = "Bot names to wake up (trigger async response). Use [] to write without triggering.") List<String> notifyParticipants) {
         try {
-            var conv = conversationRepository.findById(conversationId)
-                    .orElseThrow(() -> new IllegalArgumentException("Conversation not found: " + conversationId));
-            conv.messages().add(ChatMessage.of(currentBotName, message));
-            conversationService.save(conv);
+            if (conversationRepository.findById(conversationId).isEmpty()) {
+                throw new IllegalArgumentException("Conversation not found: " + conversationId);
+            }
+            conversationRepository.addMessage(conversationId, ChatMessage.of(currentBotName, message));
             var toNotify = notifyParticipants != null ? notifyParticipants : List.<String>of();
             for (var botName : toNotify) {
                 conversationService.triggerBotReplyAsync(conversationId, botName);

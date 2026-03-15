@@ -10,16 +10,6 @@ function botParticipantsOf(conv: Conversation | null): string[] {
   return participants.filter((p) => p !== 'user');
 }
 
-export interface StreamPart {
-  type: 'answer' | 'tool' | 'reasoning';
-  content: string;
-}
-
-export interface StreamingContent {
-  reasoning: string;
-  parts: StreamPart[];
-}
-
 export default function App() {
   const [providers, setProviders] = useState<Provider[]>([]);
   const [bots, setBots] = useState<Bot[]>([]);
@@ -28,12 +18,9 @@ export default function App() {
   const [selectedBot, setSelectedBot] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [notifyParticipants, setNotifyParticipants] = useState<string[]>([]);
-  const [streaming, setStreaming] = useState<StreamingContent | null>(null);
   const [pendingApprovals, setPendingApprovals] = useState<PendingToolApproval[]>([]);
-  const [lastStreamedContent, setLastStreamedContent] = useState<{ conversationId: string; reasoning: string; parts: StreamPart[] } | null>(null);
   const [, setDraftVersion] = useState(0);
   const inputDraftRef = useRef('');
-  const streamingRef = useRef<StreamingContent | null>(null);
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const activeIdRef = useRef(activeId);
   const selectedBotRef = useRef(selectedBot);
@@ -56,6 +43,14 @@ export default function App() {
   }, [selectedBot]);
 
   useEffect(() => {
+    const poll = () => {
+      const participant = selectedBotRef.current ?? 'user';
+      api.fetchConversations(participant).then((list) => setConversations([...list]));
+      api.fetchPendingApprovals().then((list) =>
+        setPendingApprovals(list.map((a) => ({ approvalId: a.approvalId, toolName: a.toolName, toolInput: a.toolInput })))
+      );
+    };
+    pollIntervalRef.current = setInterval(poll, 3000);
     return () => {
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
     };
@@ -122,11 +117,6 @@ export default function App() {
     if (!activeId) return;
     inputDraftRef.current = '';
     setDraftVersion((v) => v + 1);
-    if (pollIntervalRef.current) {
-      clearInterval(pollIntervalRef.current);
-      pollIntervalRef.current = null;
-    }
-    setLastStreamedContent(null);
     const files = attachments ?? [];
     setConversations((prev) =>
       prev.map((c) =>
@@ -136,91 +126,16 @@ export default function App() {
       ),
     );
     setSending(true);
-    const initial: StreamingContent = { reasoning: '', parts: [] };
-    setStreaming(initial);
-    streamingRef.current = initial;
     const fileIds = files.map((f) => f.id);
     const currentNotify = notifyParticipants.length > 0
       ? notifyParticipants
       : botParticipantsOf(activeConversation);
-    api.sendMessageStream(
-      activeId,
-      message,
-      (chunk) => {
-        if (chunk.type === 'tool_pending') {
-          try {
-            const approval = JSON.parse(chunk.content) as PendingToolApproval;
-            setPendingApprovals((prev) => [...prev, approval]);
-          } catch {
-            // skip malformed chunk
-          }
-          return;
-        }
-        if (chunk.type === 'tool') {
-          // Tool finished (approved or rejected) — remove matching pending approval
-          setPendingApprovals((prev) => {
-            if (prev.length === 0) return prev;
-            // Remove the first pending entry whose toolName appears in the tool chunk content
-            const idx = prev.findIndex((p) => chunk.content.includes(p.toolName));
-            if (idx === -1) return prev;
-            return [...prev.slice(0, idx), ...prev.slice(idx + 1)];
-          });
-        }
-        setStreaming((prev) => {
-          if (!prev) return prev;
-          let next: StreamingContent;
-          if (chunk.type === 'reasoning') {
-            next = { ...prev, reasoning: prev.reasoning + chunk.content };
-          } else if (chunk.type === 'tool') {
-            next = { ...prev, parts: [...prev.parts, { type: 'tool', content: chunk.content }] };
-          } else {
-            const prevParts = prev.parts;
-            const last = prevParts[prevParts.length - 1];
-            if (last?.type === 'answer') {
-              next = {
-                ...prev,
-                parts: [...prevParts.slice(0, -1), { type: 'answer', content: last.content + chunk.content }],
-              };
-            } else {
-              next = { ...prev, parts: [...prevParts, { type: 'answer', content: chunk.content }] };
-            }
-          }
-          streamingRef.current = next;
-          return next;
-        });
-      },
-      () => {
-        const ref = streamingRef.current;
-        if (activeId && ref && (ref.reasoning || ref.parts.length > 0)) {
-          setLastStreamedContent({ conversationId: activeId, reasoning: ref.reasoning ?? '', parts: ref.parts });
-        }
-        setSending(false);
-        setStreaming(null);
-        streamingRef.current = null;
-        setPendingApprovals([]);
-        const participant = selectedBotRef.current ?? 'user';
-        const poll = () => {
-          api.fetchConversations(participant).then((list) => setConversations([...list]));
-        };
-        poll();
-        pollIntervalRef.current = setInterval(poll, 2500);
-        setTimeout(() => {
-          if (pollIntervalRef.current) {
-            clearInterval(pollIntervalRef.current);
-            pollIntervalRef.current = null;
-          }
-        }, 60000);
-      },
-      () => {
-        setSending(false);
-        setStreaming(null);
-        streamingRef.current = null;
-        setPendingApprovals([]);
-        api.fetchConversations(selectedBotRef.current ?? 'user').then(setConversations);
-      },
-      fileIds,
-      currentNotify
-    );
+    try {
+      await api.sendMessage(activeId, message, fileIds, currentNotify);
+    } catch {
+      // message saved even if notify fails
+    }
+    setSending(false);
   };
 
   const handleApproveTool = async (approvalId: string, note: string) => {
@@ -256,8 +171,6 @@ export default function App() {
         conversation={activeConversation}
         providers={providers}
         sending={sending}
-        streaming={streaming}
-        lastStreamedContent={activeId && lastStreamedContent?.conversationId === activeId ? lastStreamedContent : null}
         inputDraft={inputDraftRef.current}
         onInputDraftChange={setInputDraft}
         onSend={handleSend}

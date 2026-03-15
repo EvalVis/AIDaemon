@@ -1,7 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import type { ChatMessage, Conversation, FileAttachment, PendingToolApproval, Provider } from '../types';
-import type { StreamingContent, StreamPart } from '../App';
 import * as api from '../api';
+
+interface StreamPart {
+  type: 'answer' | 'tool' | 'reasoning';
+  content: string;
+}
 
 type DisplayMessage = ChatMessage | { participant: string; parts: StreamPart[] };
 
@@ -10,8 +14,6 @@ interface ChatWindowProps {
   conversation: Conversation | null;
   providers: Provider[];
   sending: boolean;
-  streaming: StreamingContent | null;
-  lastStreamedContent: { reasoning: string; parts: StreamPart[] } | null;
   inputDraft: string;
   onInputDraftChange: (value: string) => void;
   onSend: (message: string, attachments?: FileAttachment[]) => void;
@@ -433,28 +435,14 @@ function filterParts(parts: StreamPart[], hideToolsAndThinking: boolean): Stream
 function getDisplayMessages(
   messages: ChatMessage[],
   hideToolsAndThinking: boolean,
-  lastStreamedContent: { reasoning: string; parts: StreamPart[] } | null,
-  conversation: Conversation | null
 ): DisplayMessage[] {
-  let list: DisplayMessage[] = messages.map((msg) => {
+  return messages.map((msg) => {
     if (getMessageParticipant(msg) !== 'user' && getMessageParticipant(msg) !== 'tool') {
       const parts = parseStructuredContent(msg.content);
       if (parts) return { participant: msg.participant, parts: filterParts(parts, hideToolsAndThinking) };
     }
     return msg;
   });
-  if (lastStreamedContent && list.length > 0) {
-    const lastUserIdx = Math.max(...list.map((msg, i) => (getMessageParticipant(msg) === 'user' ? i : -1)));
-    const afterLastUser = list.slice(lastUserIdx + 1);
-    if (afterLastUser.length === 1 && getMessageParticipant(afterLastUser[0]) !== 'user' && getMessageParticipant(afterLastUser[0]) !== 'tool') {
-      const parts: StreamPart[] = lastStreamedContent.reasoning
-        ? [{ type: 'reasoning', content: lastStreamedContent.reasoning }, ...lastStreamedContent.parts]
-        : lastStreamedContent.parts;
-      const replyingParticipant = conversation?.participants?.find((p) => p !== 'user') ?? 'assistant';
-      list = [...list.slice(0, lastUserIdx + 1), { participant: replyingParticipant, parts: filterParts(parts, hideToolsAndThinking) }];
-    }
-  }
-  return list;
 }
 
 // CSS class applied to inline file chips inside the contentEditable input div.
@@ -569,8 +557,6 @@ export default function ChatWindow({
   conversation,
   providers,
   sending,
-  streaming,
-  lastStreamedContent,
   inputDraft,
   onInputDraftChange,
   onSend,
@@ -623,12 +609,12 @@ export default function ChatWindow({
   }, [inputDraft]);
 
   const visibleMessages = conversation
-    ? getDisplayMessages(conversation.messages, hideToolsAndThinking, lastStreamedContent, conversation)
+    ? getDisplayMessages(conversation.messages, hideToolsAndThinking)
     : [];
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [conversation?.messages.length, streaming?.reasoning, streaming?.parts?.length]);
+  }, [conversation?.messages.length]);
 
   const hasProvider = Boolean(conversation?.providerId);
 
@@ -840,52 +826,11 @@ export default function ChatWindow({
             onSpeak={() => speakMessage(msg, i)}
           />
         ))}
-        {sending && (() => {
-          const replyingParticipant = conversation?.participants?.find((p) => p !== 'user') ?? 'assistant';
-          const assistantLabel = participantDisplayName(replyingParticipant);
-          return (
+        {sending && (
           <div className="max-w-[80%] py-2.5 px-3.5 rounded-lg text-sm leading-relaxed self-start bg-assistant-bg border border-border opacity-95">
-            <div className="flex items-baseline gap-2 cursor-pointer select-none">
-              <span className={`text-[0.6875rem] font-semibold tracking-wide text-text-dim shrink-0 ${['user', 'assistant', 'tool'].includes(assistantLabel.toLowerCase()) ? 'uppercase' : ''}`}>
-                {assistantLabel}
-              </span>
-            </div>
-            <div className="text-text-bright mt-1.5 min-w-0 break-words">
-              {streaming?.reasoning ? (
-                <details className="mb-2" open>
-                  <summary className="cursor-pointer text-text-dim text-xs font-semibold uppercase">
-                    Thinking
-                  </summary>
-                  <pre className="mt-1.5 p-2 bg-bg rounded-lg text-xs text-text-dim whitespace-pre-wrap break-words max-h-[200px] overflow-y-auto">
-                    {streaming.reasoning}
-                  </pre>
-                </details>
-              ) : null}
-              {streaming?.reasoning && streaming.parts.length > 0 ? (
-                <div className="h-px bg-border my-2" />
-              ) : null}
-              {streaming?.parts.map((part, i) =>
-                part.type === 'tool' ? (
-                  <details key={i} className="message-tool-part my-2 py-2 px-2.5 bg-tool-bg border border-tool-border rounded-lg text-tool-text max-w-full overflow-hidden" open>
-                    <summary className="flex items-center gap-2 cursor-pointer text-xs font-semibold uppercase text-tool-summary list-none [&::-webkit-details-marker]:hidden [&::marker]:hidden">
-                      <span>Tool</span>
-                      <span className="btn-msg-toggle flex items-center justify-center w-6 h-6 ml-auto shrink-0 rounded-md border border-tool-border bg-tool-bg/80 text-[0.65rem] font-medium leading-none transition-all duration-150 hover:border-tool-summary hover:opacity-90" />
-                    </summary>
-                    <pre className="mt-1.5 font-mono text-xs text-tool-text whitespace-pre-wrap break-words max-w-full overflow-x-auto overflow-y-hidden">
-                      {part.content}
-                    </pre>
-                  </details>
-                ) : (
-                  <span key={i} className="whitespace-pre-wrap break-words">{renderAnswerContent(part.content)}</span>
-                )
-              )}
-              {streaming && streaming.parts.length === 0 && !streaming.reasoning && (
-                <span className="whitespace-pre-wrap break-words">Thinking…</span>
-              )}
-            </div>
+            <span className="text-text-dim text-xs">Message sent. Waiting for responses…</span>
           </div>
-          );
-        })()}
+        )}
         {pendingApprovals.map((approval) => (
           <ToolApprovalCard
             key={approval.approvalId}

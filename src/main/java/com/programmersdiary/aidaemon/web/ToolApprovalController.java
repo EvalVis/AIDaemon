@@ -5,6 +5,8 @@ import com.programmersdiary.aidaemon.chat.ToolApprovalService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/api/tools")
 public class ToolApprovalController {
@@ -17,6 +19,11 @@ public class ToolApprovalController {
 
     public ToolApprovalController(ToolApprovalService approvalService) {
         this.approvalService = approvalService;
+    }
+
+    @GetMapping("/pending")
+    public List<ToolApprovalService.PendingApproval> listPending() {
+        return approvalService.listPending();
     }
 
     @PostMapping("/{approvalId}/approve")
