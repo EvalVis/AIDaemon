@@ -4,6 +4,8 @@ import com.programmersdiary.aidaemon.bot.BotRepository;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 
+import java.util.ArrayList;
+
 public class BotToBotTool {
 
     private final ConversationService conversationService;
@@ -19,25 +21,27 @@ public class BotToBotTool {
         this.currentBotName = currentBotName;
     }
 
-    @Tool(description = "List other bots you can message. Returns bot names (excluding yourself).")
+    @Tool(description = "List participants you can message: 'user' (the human) and other bots.")
     public String listOtherBots() {
-        var others = botRepository.findAllNames().stream()
+        var participants = new ArrayList<String>();
+        participants.add("user");
+        botRepository.findAllNames().stream()
                 .filter(n -> !currentBotName.equals(n))
-                .toList();
-        return others.isEmpty() ? "No bots found." : "Other bots: " + String.join(", ", others);
+                .forEach(participants::add);
+        return participants.isEmpty() ? "No other participants found."
+                : "Participants: " + String.join(", ", participants);
     }
 
-    @Tool(description = "Send a message to another bot and get its reply. Use when you need to ask another bot for information or to perform a task. The other bot will respond in the same provider context.")
+    @Tool(description = "Send a message to a participant. Use 'user' to write a message into the human's chat with you. Use a bot name to send a message to another bot and get its reply.")
     public String messageBot(
-            @ToolParam(description = "Name of the bot to message (e.g. trickster, maverick)") String targetBotName,
-            @ToolParam(description = "The message or question to send to the other bot") String message) {
+            @ToolParam(description = "Target participant: 'user' or a bot name") String targetName,
+            @ToolParam(description = "The message to send") String message) {
         if (currentProviderId == null || currentProviderId.isBlank()) {
-            return "No provider selected; cannot message another bot.";
+            return "No provider selected; cannot send message.";
         }
         try {
-            var response = conversationService.sendMessageBotToBot(
-                    currentBotName, targetBotName.trim(), message != null ? message.trim() : "", currentProviderId);
-            return response != null ? response : "(no response)";
+            return conversationService.sendMessageToParticipant(
+                    currentBotName, targetName.trim(), message != null ? message.trim() : "", currentProviderId);
         } catch (IllegalArgumentException e) {
             return "Error: " + e.getMessage();
         }

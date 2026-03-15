@@ -25,24 +25,30 @@ public class ConversationService {
         this.fileStorageService = fileStorageService;
     }
 
-    public String sendMessageBotToBot(String callerBotName, String targetBotName, String message, String providerId) {
+    public String sendMessageToParticipant(String callerBotName, String target, String message, String providerId) {
         if (callerBotName == null || callerBotName.isBlank()) {
-            throw new IllegalArgumentException("Bot-to-bot messaging requires a named caller bot");
+            throw new IllegalArgumentException("Caller bot name is required");
         }
-        if (targetBotName == null || targetBotName.isBlank()) {
-            throw new IllegalArgumentException("Target bot name is required");
+        if (target == null || target.isBlank()) {
+            throw new IllegalArgumentException("Target participant is required");
         }
-        if (callerBotName.equals(targetBotName)) {
-            throw new IllegalArgumentException("Caller and target bot must be different");
+        if (callerBotName.equals(target)) {
+            throw new IllegalArgumentException("Cannot message yourself");
         }
         var botNames = botService.listBots().stream().map(b -> b.name()).toList();
         if (!botNames.contains(callerBotName)) {
             throw new IllegalArgumentException("Caller bot not found: " + callerBotName);
         }
-        if (!botNames.contains(targetBotName)) {
-            throw new IllegalArgumentException("Target bot not found: " + targetBotName);
+        if ("user".equalsIgnoreCase(target)) {
+            var conv = getOrCreateDirect("user", callerBotName, providerId);
+            conv.messages().add(ChatMessage.of("assistant", message));
+            conversationRepository.save(conv);
+            return "Message written to user conversation.";
         }
-        var conv = getOrCreateDirect(callerBotName, targetBotName, providerId);
+        if (!botNames.contains(target)) {
+            throw new IllegalArgumentException("Target participant not found: " + target);
+        }
+        var conv = getOrCreateDirect(callerBotName, target, providerId);
         return sendMessage(conv.id(), message);
     }
 
