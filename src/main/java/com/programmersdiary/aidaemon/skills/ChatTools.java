@@ -169,7 +169,7 @@ public class ChatTools {
     public String retrieveOlderPersonalMemory(
             @ToolParam(description = "Start message index (inclusive), 0-based") int startIndexInclusive,
             @ToolParam(description = "End message index (exclusive). Omit to include all from startIndex to end") Integer endIndexExclusive) {
-        if (botName == null || botName.isBlank() || "default".equalsIgnoreCase(botName) || botRepository == null) {
+        if (botName == null || botName.isBlank() || botRepository == null) {
             return "Personal memory is only available for named bots.";
         }
         if (!botRepository.exists(botName)) {

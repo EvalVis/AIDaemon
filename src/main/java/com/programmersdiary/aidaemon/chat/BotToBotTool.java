@@ -31,9 +31,6 @@ public class BotToBotTool {
     public String messageBot(
             @ToolParam(description = "Name of the bot to message (e.g. trickster, maverick)") String targetBotName,
             @ToolParam(description = "The message or question to send to the other bot") String message) {
-        if (currentBotName == null || currentBotName.isBlank() || "default".equalsIgnoreCase(currentBotName)) {
-            return "Bot-to-bot messaging is only available for named bots.";
-        }
         if (currentProviderId == null || currentProviderId.isBlank()) {
             return "No provider selected; cannot message another bot.";
         }

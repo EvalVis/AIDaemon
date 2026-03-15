@@ -9,7 +9,6 @@ import reactor.core.publisher.Flux;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.util.UUID;
 
 @Service
 public class ConversationService {
@@ -26,22 +25,11 @@ public class ConversationService {
         this.fileStorageService = fileStorageService;
     }
 
-    public Conversation create(String name, String providerId) {
-        return create(name, providerId, null);
-    }
-
-    public Conversation create(String name, String providerId, String botName) {
-        var conversation = new Conversation(
-                UUID.randomUUID().toString(), name, providerId, botName, new ArrayList<>(),
-                System.currentTimeMillis(), null, null, null);
-        return conversationRepository.save(conversation);
-    }
-
     public String sendMessageBotToBot(String callerBotName, String targetBotName, String message, String providerId) {
-        if (callerBotName == null || callerBotName.isBlank() || "default".equalsIgnoreCase(callerBotName)) {
+        if (callerBotName == null || callerBotName.isBlank()) {
             throw new IllegalArgumentException("Bot-to-bot messaging requires a named caller bot");
         }
-        if (targetBotName == null || targetBotName.isBlank() || "default".equalsIgnoreCase(targetBotName)) {
+        if (targetBotName == null || targetBotName.isBlank()) {
             throw new IllegalArgumentException("Target bot name is required");
         }
         if (callerBotName.equals(targetBotName)) {
@@ -59,7 +47,7 @@ public class ConversationService {
     }
 
     public Conversation getOrCreateDirect(String userParticipantId, String botName, String providerId) {
-        if (botName == null || botName.isBlank() || "default".equalsIgnoreCase(botName)) {
+        if (botName == null || botName.isBlank()) {
             throw new IllegalArgumentException("Direct chat requires a named bot");
         }
         if (!botService.listBots().stream().anyMatch(b -> botName.equals(b.name()))) {
@@ -88,15 +76,6 @@ public class ConversationService {
                             System.currentTimeMillis(), p1, p2, true);
                     return conversationRepository.save(conv);
                 });
-    }
-
-    public Conversation updateProvider(String conversationId, String providerId) {
-        var conversation = conversationRepository.findById(conversationId)
-                .orElseThrow(() -> new IllegalArgumentException("Conversation not found: " + conversationId));
-        var updated = new Conversation(conversation.id(), conversation.name(), providerId, conversation.botName(),
-                conversation.messages(), conversation.createdAtMillis(),
-                conversation.participant1(), conversation.participant2(), conversation.direct());
-        return conversationRepository.save(updated);
     }
 
     public void save(Conversation conversation) {

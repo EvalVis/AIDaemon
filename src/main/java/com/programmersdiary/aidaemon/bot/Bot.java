@@ -38,21 +38,12 @@ public class Bot {
         return name;
     }
 
-    public ChatResult chat(String providerId, List<ChatMessage> messages, String conversationId) {
-        return chat(providerId, messages, conversationId, null);
-    }
-
     public ChatResult chat(String providerId, List<ChatMessage> messages, String conversationId, String senderIdentity) {
         var meta = streamRequestMetadata(messages, conversationId);
         var contextMessages = buildContext(messages, senderIdentity);
         var result = chatService.streamAndCollect(providerId, contextMessages, meta);
         appendToPersonalMemoryAfterChat(messages, result);
         return result;
-    }
-
-    public Flux<StreamChunk> chatStream(String providerId, List<ChatMessage> messages, String conversationId,
-                                       Consumer<ChatResult> onComplete) {
-        return chatStream(providerId, messages, conversationId, onComplete, null);
     }
 
     public Flux<StreamChunk> chatStream(String providerId, List<ChatMessage> messages, String conversationId,
@@ -70,34 +61,23 @@ public class Bot {
     }
 
     public List<Message> buildContext(List<ChatMessage> messages, String senderIdentity) {
-        var named = isNamed();
-        var convLimit = contextConfig.conversationLimit(named);
-        var personalLimit = contextConfig.personalMemoryLimit(named);
-        return contextBuilder.buildMessages(messages, name, convLimit, personalLimit, contextConfig.systemInstructions(), senderIdentity);
+        return contextBuilder.buildMessages(messages, name, contextConfig.conversationLimit(),
+                contextConfig.personalMemoryLimit(), contextConfig.systemInstructions(), senderIdentity);
     }
 
     public StreamRequestMetadata streamRequestMetadata(List<ChatMessage> messages, String conversationId) {
-        return new StreamRequestMetadata(messages, conversationId, name, contextConfig.conversationLimit(isNamed()));
-    }
-
-    public void appendToPersonalMemory(List<ChatMessage> contextConversation, String assistantContent) {
-        botService.appendTurnToPersonalMemory(name, contextConversation, assistantContent);
+        return new StreamRequestMetadata(messages, conversationId, name, contextConfig.conversationLimit());
     }
 
     private void appendToPersonalMemoryAfterChat(List<ChatMessage> messages, ChatResult result) {
         var filtered = messages.stream().filter(m -> !"tool".equals(m.role())).toList();
         if (filtered.isEmpty()) return;
         var history = filtered.subList(0, filtered.size() - 1);
-        var convLimit = contextConfig.conversationLimit(isNamed());
         var contextConversation = new ArrayList<ChatMessage>();
         if (!history.isEmpty()) {
-            contextConversation.addAll(ContextWindowTrimmer.trimChatHistory(history, convLimit));
+            contextConversation.addAll(ContextWindowTrimmer.trimChatHistory(history, contextConfig.conversationLimit()));
         }
         contextConversation.add(filtered.get(filtered.size() - 1));
-        appendToPersonalMemory(contextConversation, result.assistantContent());
-    }
-
-    private boolean isNamed() {
-        return name != null && !name.isBlank() && !"default".equalsIgnoreCase(name);
+        botService.appendTurnToPersonalMemory(name, contextConversation, result.assistantContent());
     }
 }

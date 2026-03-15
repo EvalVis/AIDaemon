@@ -45,9 +45,6 @@ public class BotService {
         if (trimmedName.isEmpty()) {
             throw new IllegalArgumentException("Bot name is required");
         }
-        if ("default".equalsIgnoreCase(trimmedName)) {
-            throw new IllegalArgumentException("Bot name 'default' is reserved");
-        }
         if (trimmedSoul.isEmpty()) {
             throw new IllegalArgumentException("Bot soul description is required");
         }
@@ -59,17 +56,11 @@ public class BotService {
     }
 
     public String loadSoul(String name) {
-        if (name == null || name.isBlank() || "default".equalsIgnoreCase(name)) {
-            return null;
-        }
         return repository.loadSoul(name);
     }
 
     public TrimmedPersonalMemory loadPersonalMemoryTrimmed(String name, int maxChars) {
-        if (name == null || name.isBlank() || "default".equalsIgnoreCase(name) || maxChars <= 0) {
-            return new TrimmedPersonalMemory(0, List.of(), 0);
-        }
-        if (!repository.exists(name)) {
+        if (maxChars <= 0 || !repository.exists(name)) {
             return new TrimmedPersonalMemory(0, List.of(), 0);
         }
         var entries = repository.loadPersonalMemory(name);
@@ -80,9 +71,6 @@ public class BotService {
     }
 
     public List<PersonalMemoryEntry> loadPersonalMemory(String name) {
-        if (name == null || name.isBlank() || "default".equalsIgnoreCase(name)) {
-            return List.of();
-        }
         if (!repository.exists(name)) {
             return List.of();
         }
@@ -90,9 +78,6 @@ public class BotService {
     }
 
     public void appendTurnToPersonalMemory(String botName, List<ChatMessage> contextConversation, String assistantContent) {
-        if (botName == null || botName.isBlank() || "default".equalsIgnoreCase(botName)) {
-            return;
-        }
         if (!repository.exists(botName)) return;
         var entries = new ArrayList<PersonalMemoryEntry>();
         if (contextConversation != null) {
@@ -105,4 +90,3 @@ public class BotService {
         repository.appendToPersonalMemory(botName, entries);
     }
 }
-

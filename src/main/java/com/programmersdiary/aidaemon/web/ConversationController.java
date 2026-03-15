@@ -12,7 +12,6 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -25,9 +24,9 @@ record MessageRequest(String message, List<String> fileIds) {
 public class ConversationController {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    /** 0L = no timeout (used when manual-approve is on so tool approval can wait indefinitely). */
     private static final long NO_TIMEOUT = 0L;
     private static final long DEFAULT_TIMEOUT_MS = 300_000L;
+    private static final String DEFAULT_USER_PARTICIPANT = "user";
 
     private final ConversationService conversationService;
     private final boolean manualApprove;
@@ -41,21 +40,10 @@ public class ConversationController {
         this.manualApprove = manualApprove;
     }
 
-    @PostMapping
-    @ResponseStatus(HttpStatus.CREATED)
-    public Map<String, Object> create(@RequestBody Map<String, String> request) {
-        var name = request.getOrDefault("name", "Untitled");
-        var providerId = request.get("providerId");
-        if (providerId != null && providerId.isBlank()) providerId = null;
-        var botName = request.get("botName");
-        if (botName != null && (botName.isBlank() || "default".equalsIgnoreCase(botName))) botName = null;
-        var conversation = conversationService.create(name, providerId, botName);
-        var out = new HashMap<String, Object>();
-        out.put("conversationId", conversation.id());
-        out.put("name", conversation.name());
-        out.put("providerId", conversation.providerId());
-        out.put("botName", conversation.botName());
-        return out;
+    @GetMapping("/direct/{botName}")
+    public Conversation getOrCreateDirect(@PathVariable String botName,
+                                         @RequestParam(required = false) String providerId) {
+        return conversationService.getOrCreateDirect(DEFAULT_USER_PARTICIPANT, botName, providerId);
     }
 
     @PatchMapping("/{id}")
@@ -63,28 +51,13 @@ public class ConversationController {
         var conversation = conversationService.get(id);
         var providerId = conversation.providerId();
         if (request.containsKey("providerId")) {
-            var rawProviderId = request.get("providerId");
-            providerId = (rawProviderId == null || rawProviderId.isBlank()) ? null : rawProviderId;
+            var raw = request.get("providerId");
+            providerId = (raw == null || raw.isBlank()) ? null : raw;
         }
-        var botName = conversation.botName();
-        if (request.containsKey("botName")) {
-            var rawBot = request.get("botName");
-            if (rawBot == null || rawBot.isBlank() || "default".equalsIgnoreCase(rawBot)) {
-                botName = null;
-            } else {
-                botName = rawBot;
-            }
-        }
-        var updated = new com.programmersdiary.aidaemon.chat.Conversation(
-                conversation.id(),
-                conversation.name(),
-                providerId,
-                botName,
-                conversation.messages(),
-                conversation.createdAtMillis(),
-                conversation.participant1(),
-                conversation.participant2(),
-                conversation.direct());
+        var updated = new Conversation(
+                conversation.id(), conversation.name(), providerId, conversation.botName(),
+                conversation.messages(), conversation.createdAtMillis(),
+                conversation.participant1(), conversation.participant2(), conversation.direct());
         conversationService.save(updated);
         return updated;
     }
@@ -131,13 +104,5 @@ public class ConversationController {
     @GetMapping("/{id}")
     public Conversation get(@PathVariable String id) {
         return conversationService.get(id);
-    }
-
-    private static final String DEFAULT_USER_PARTICIPANT = "user";
-
-    @GetMapping("/direct/{botName}")
-    public Conversation getOrCreateDirect(@PathVariable String botName,
-                                         @RequestParam(required = false) String providerId) {
-        return conversationService.getOrCreateDirect(DEFAULT_USER_PARTICIPANT, botName, providerId);
     }
 }

@@ -27,17 +27,11 @@ public class ContextConfig {
         return charsLimit;
     }
 
-    public double personalMemoryRatio() {
-        return personalMemoryRatio;
-    }
-
-    public int conversationLimit(boolean namedBot) {
-        if (!namedBot) return charsLimit;
+    public int conversationLimit() {
         return (int) (charsLimit * (1 - personalMemoryRatio));
     }
 
-    public int personalMemoryLimit(boolean namedBot) {
-        if (!namedBot) return 0;
+    public int personalMemoryLimit() {
         return (int) (charsLimit * personalMemoryRatio);
     }
 }
