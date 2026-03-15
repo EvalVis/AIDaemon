@@ -1,6 +1,8 @@
 package com.programmersdiary.aidaemon.chat;
 
+import com.programmersdiary.aidaemon.bot.BotManagementTool;
 import com.programmersdiary.aidaemon.bot.BotRepository;
+import com.programmersdiary.aidaemon.bot.BotService;
 import com.programmersdiary.aidaemon.files.FileStorageService;
 import com.programmersdiary.aidaemon.mcp.McpService;
 import com.programmersdiary.aidaemon.provider.ProviderConfigRepository;
@@ -38,6 +40,7 @@ public class ChatToolCallbacksService {
     private final ShellAccessService shellAccessService;
     private final ToolApprovalService toolApprovalService;
     private final ConversationService conversationService;
+    private final BotService botService;
     private final BotRepository botRepository;
     private final McpService mcpService;
     private final SmitheryMcpTool smitheryMcpTool;
@@ -50,6 +53,7 @@ public class ChatToolCallbacksService {
                                    ShellAccessService shellAccessService,
                                    ToolApprovalService toolApprovalService,
                                    @Lazy ConversationService conversationService,
+                                   @Lazy BotService botService,
                                    BotRepository botRepository,
                                    McpService mcpService,
                                    @Autowired(required = false) SmitheryMcpTool smitheryMcpTool,
@@ -61,6 +65,7 @@ public class ChatToolCallbacksService {
         this.shellAccessService = shellAccessService;
         this.toolApprovalService = toolApprovalService;
         this.conversationService = conversationService;
+        this.botService = botService;
         this.botRepository = botRepository;
         this.mcpService = mcpService;
         this.smitheryMcpTool = smitheryMcpTool;
@@ -82,6 +87,7 @@ public class ChatToolCallbacksService {
         list.addAll(Arrays.asList(ToolCallbacks.from(new ChatTools(skillsService, jobExecutor, providerId, filtered,
                 meta.conversationLimit(), meta.botName(), botRepository))));
         list.addAll(Arrays.asList(ToolCallbacks.from(new ShellTool(shellAccessService))));
+        list.addAll(Arrays.asList(ToolCallbacks.from(new BotManagementTool(botService))));
 
         var botName = meta.botName();
         if (botName != null && !botName.isBlank()) {
