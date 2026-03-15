@@ -15,7 +15,7 @@ aidaemon:
   manual-approve: true
   tool-execution-timeout-seconds: 300
   context-window:
-    chars-limit: 5000
+    chars-limit: 20000
   config-dir: ${user.home}/.aidaemon
   system-instructions: |
     Use the saveMemory tool when the user asks you to remember something.

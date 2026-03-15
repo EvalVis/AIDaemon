@@ -118,7 +118,8 @@ public class ChatService {
                     }
                     partsWithReasoning.addAll(parts);
                     onComplete.accept(new ChatResult(contentAccum.toString(),
-                            partsWithReasoning.isEmpty() ? null : partsWithReasoning, reasoning));
+                            partsWithReasoning.isEmpty() ? null : partsWithReasoning, reasoning,
+                            List.copyOf(toolLog)));
                 })
                 .doOnError(e -> onComplete.accept(new ChatResult("[Error] " + e.getMessage())));
     }
