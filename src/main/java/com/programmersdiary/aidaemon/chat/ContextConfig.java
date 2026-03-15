@@ -12,12 +12,9 @@ public class ContextConfig {
 
     public ContextConfig(
             @Value("${aidaemon.system-instructions:}") String systemInstructions,
-            @Value("${aidaemon.delegation-threshold-seconds:30}") int delegationThresholdSeconds,
             @Value("${aidaemon.context-window.chars-limit:${aidaemon.chars-context-window:0}}") int charsLimit,
             @Value("${aidaemon.context-window.personal-memory-ratio:0}") double personalMemoryRatio) {
-        this.systemInstructions = systemInstructions != null
-                ? systemInstructions.replace("{threshold}", String.valueOf(delegationThresholdSeconds))
-                : "";
+        this.systemInstructions = systemInstructions != null ? systemInstructions : "";
         this.charsLimit = charsLimit;
         this.personalMemoryRatio = Math.max(0, Math.min(1, personalMemoryRatio));
     }

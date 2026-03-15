@@ -1,16 +1,12 @@
 package com.programmersdiary.aidaemon.chat;
 
-import com.programmersdiary.aidaemon.chat.StreamRequestMetadata;
-import com.programmersdiary.aidaemon.delegation.DelegationTools;
 import com.programmersdiary.aidaemon.mcp.McpService;
 import com.programmersdiary.aidaemon.provider.ChatModelFactory;
 import com.programmersdiary.aidaemon.provider.ProviderConfigRepository;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.StreamingChatModel;
-import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
-import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -32,8 +28,6 @@ public class ChatService {
     private final ChatModelFactory chatModelFactory;
     private final ChatToolCallbacksService toolCallbacksService;
     private final McpService mcpService;
-    private final ConversationRepository conversationRepository;
-    private final boolean delegationEnabled;
     private final boolean manualApprove;
     private final int toolExecutionTimeoutSeconds;
     private final ToolApprovalService toolApprovalService;
@@ -42,18 +36,14 @@ public class ChatService {
                        ChatModelFactory chatModelFactory,
                        ChatToolCallbacksService toolCallbacksService,
                        McpService mcpService,
-                       ConversationRepository conversationRepository,
                        ToolApprovalService toolApprovalService,
-                       @Value("${aidaemon.delegation-enabled:false}") boolean delegationEnabled,
                        @Value("${aidaemon.manual-approve:false}") boolean manualApprove,
                        @Value("${aidaemon.tool-execution-timeout-seconds:300}") int toolExecutionTimeoutSeconds) {
         this.configRepository = configRepository;
         this.chatModelFactory = chatModelFactory;
         this.toolCallbacksService = toolCallbacksService;
         this.mcpService = mcpService;
-        this.conversationRepository = conversationRepository;
         this.toolApprovalService = toolApprovalService;
-        this.delegationEnabled = delegationEnabled;
         this.manualApprove = manualApprove;
         this.toolExecutionTimeoutSeconds = toolExecutionTimeoutSeconds;
     }
@@ -78,27 +68,17 @@ public class ChatService {
         for (var t : toolCallbacksService.buildToolCallbacks(meta, config.id(), onToolChunk)) {
             loggingTools.add(new LoggingToolCallback(t, toolLog, null, onToolChunk, approvalServiceForTools, execTimeout));
         }
-        // File edit tools handle their own diff-based approval — never wrap with pre-approval
         for (var t : toolCallbacksService.buildFileEditToolCallbacks(meta, onToolChunk)) {
             loggingTools.add(new LoggingToolCallback(t, toolLog, null, onToolChunk, null, execTimeout));
         }
         mcpService.getToolCallbacksByServer().forEach((serverName, callbacks) ->
                 callbacks.forEach(t -> loggingTools.add(new LoggingToolCallback(t, toolLog, serverName, onToolChunk, approvalServiceForTools, execTimeout))));
 
-        final DelegationTools delegationTools = (delegationEnabled && meta.conversationId() != null)
-                ? new DelegationTools(conversationRepository, meta.conversationId(), providerId, meta.botName())
-                : null;
-        if (delegationTools != null) {
-            for (var t : org.springframework.ai.support.ToolCallbacks.from(delegationTools)) {
-                loggingTools.add(new LoggingToolCallback(t, toolLog, null, onToolChunk, approvalServiceForTools, execTimeout));
-            }
-        }
-
         var chatModel = chatModelFactory.create(config, loggingTools);
         var promptOptions = chatModelFactory.promptOptions(config, loggingTools);
         if (!(chatModel instanceof StreamingChatModel streamingModel)) {
             var error = "Provider does not support streaming; only streaming models are supported.";
-            onComplete.accept(new ChatResult("[Error] " + error, List.of()));
+            onComplete.accept(new ChatResult("[Error] " + error));
             return Flux.just(new StreamChunk(StreamChunk.TYPE_ANSWER, "[Error] " + error));
         }
 
@@ -130,8 +110,6 @@ public class ChatService {
                 });
         return merged
                 .doOnComplete(() -> {
-                    var pendingIds = delegationTools != null
-                            ? delegationTools.getPendingSubConversationIds() : List.<String>of();
                     var parts = coalesceOrderedChunks(orderedChunks);
                     var reasoning = reasoningAccum.isEmpty() ? null : reasoningAccum.toString();
                     var partsWithReasoning = new ArrayList<StreamChunk>();
@@ -139,10 +117,10 @@ public class ChatService {
                         partsWithReasoning.add(new StreamChunk(StreamChunk.TYPE_REASONING, reasoning));
                     }
                     partsWithReasoning.addAll(parts);
-                    onComplete.accept(new ChatResult(contentAccum.toString(), pendingIds,
+                    onComplete.accept(new ChatResult(contentAccum.toString(),
                             partsWithReasoning.isEmpty() ? null : partsWithReasoning, reasoning));
                 })
-                .doOnError(e -> onComplete.accept(new ChatResult("[Error] " + e.getMessage(), List.of())));
+                .doOnError(e -> onComplete.accept(new ChatResult("[Error] " + e.getMessage())));
     }
 
     private static List<StreamChunk> coalesceOrderedChunks(List<StreamChunk> orderedChunks) {

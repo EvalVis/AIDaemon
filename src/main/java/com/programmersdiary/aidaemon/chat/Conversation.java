@@ -9,19 +9,14 @@ public record Conversation(String id,
                            String providerId,
                            String botName,
                            List<ChatMessage> messages,
-                           String parentConversationId,
                            Long createdAtMillis,
                            String participant1,
                            String participant2,
                            Boolean direct) {
 
-    public Conversation(String id, String name, String providerId, List<ChatMessage> messages, String parentConversationId) {
-        this(id, name, providerId, null, messages, parentConversationId, null, null, null, null);
-    }
-
     public Conversation(String id, String name, String providerId, String botName, List<ChatMessage> messages,
-                        String parentConversationId, Long createdAtMillis) {
-        this(id, name, providerId, botName, messages, parentConversationId, createdAtMillis, null, null, null);
+                        Long createdAtMillis) {
+        this(id, name, providerId, botName, messages, createdAtMillis, null, null, null);
     }
 
     public static String canonicalId(String a, String b) {
@@ -34,4 +29,3 @@ public record Conversation(String id,
         return Boolean.TRUE.equals(direct) || (participant1 != null && participant2 != null);
     }
 }
-

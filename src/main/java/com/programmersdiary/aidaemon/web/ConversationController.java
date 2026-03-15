@@ -49,7 +49,7 @@ public class ConversationController {
         if (providerId != null && providerId.isBlank()) providerId = null;
         var botName = request.get("botName");
         if (botName != null && (botName.isBlank() || "default".equalsIgnoreCase(botName))) botName = null;
-        var conversation = conversationService.create(name, providerId, botName, null);
+        var conversation = conversationService.create(name, providerId, botName);
         var out = new HashMap<String, Object>();
         out.put("conversationId", conversation.id());
         out.put("name", conversation.name());
@@ -81,7 +81,6 @@ public class ConversationController {
                 providerId,
                 botName,
                 conversation.messages(),
-                conversation.parentConversationId(),
                 conversation.createdAtMillis(),
                 conversation.participant1(),
                 conversation.participant2(),

@@ -52,12 +52,6 @@ public class ConversationRepository {
         return List.copyOf(conversations.values());
     }
 
-    public List<Conversation> findByParentId(String parentId) {
-        return conversations.values().stream()
-                .filter(c -> parentId.equals(c.parentConversationId()))
-                .toList();
-    }
-
     public List<Conversation> findByParticipant(String participant) {
         if (participant == null) return List.of();
         return conversations.values().stream()

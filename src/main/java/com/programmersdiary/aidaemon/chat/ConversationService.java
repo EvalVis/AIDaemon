@@ -1,10 +1,8 @@
 package com.programmersdiary.aidaemon.chat;
 
 import com.programmersdiary.aidaemon.bot.BotService;
-import com.programmersdiary.aidaemon.delegation.DelegationService;
 import com.programmersdiary.aidaemon.files.FileAttachment;
 import com.programmersdiary.aidaemon.files.FileStorageService;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
@@ -17,31 +15,24 @@ import java.util.UUID;
 public class ConversationService {
 
     private final ConversationRepository conversationRepository;
-    private final ObjectProvider<DelegationService> delegationServiceProvider;
     private final BotService botService;
     private final FileStorageService fileStorageService;
 
     public ConversationService(ConversationRepository conversationRepository,
-                               ObjectProvider<DelegationService> delegationServiceProvider,
                                BotService botService,
                                FileStorageService fileStorageService) {
         this.conversationRepository = conversationRepository;
-        this.delegationServiceProvider = delegationServiceProvider;
         this.botService = botService;
         this.fileStorageService = fileStorageService;
     }
 
     public Conversation create(String name, String providerId) {
-        return create(name, providerId, null, null);
+        return create(name, providerId, null);
     }
 
-    public Conversation create(String name, String providerId, String parentConversationId) {
-        return create(name, providerId, null, parentConversationId);
-    }
-
-    public Conversation create(String name, String providerId, String botName, String parentConversationId) {
+    public Conversation create(String name, String providerId, String botName) {
         var conversation = new Conversation(
-                UUID.randomUUID().toString(), name, providerId, botName, new ArrayList<>(), parentConversationId,
+                UUID.randomUUID().toString(), name, providerId, botName, new ArrayList<>(),
                 System.currentTimeMillis(), null, null, null);
         return conversationRepository.save(conversation);
     }
@@ -84,7 +75,7 @@ public class ConversationService {
                 .map(conv -> {
                     if (providerId != null && !providerId.isBlank() && !providerId.equals(conv.providerId())) {
                         var updated = new Conversation(conv.id(), conv.name(), providerId, conv.botName(),
-                                conv.messages(), conv.parentConversationId(), conv.createdAtMillis(),
+                                conv.messages(), conv.createdAtMillis(),
                                 conv.participant1(), conv.participant2(), conv.direct());
                         conversationRepository.save(updated);
                         return updated;
@@ -93,7 +84,7 @@ public class ConversationService {
                 })
                 .orElseGet(() -> {
                     var name = userParticipantId + " & " + botName;
-                    var conv = new Conversation(id, name, providerId, botName, new ArrayList<>(), null,
+                    var conv = new Conversation(id, name, providerId, botName, new ArrayList<>(),
                             System.currentTimeMillis(), p1, p2, true);
                     return conversationRepository.save(conv);
                 });
@@ -103,7 +94,7 @@ public class ConversationService {
         var conversation = conversationRepository.findById(conversationId)
                 .orElseThrow(() -> new IllegalArgumentException("Conversation not found: " + conversationId));
         var updated = new Conversation(conversation.id(), conversation.name(), providerId, conversation.botName(),
-                conversation.messages(), conversation.parentConversationId(), conversation.createdAtMillis(),
+                conversation.messages(), conversation.createdAtMillis(),
                 conversation.participant1(), conversation.participant2(), conversation.direct());
         return conversationRepository.save(updated);
     }
@@ -129,14 +120,6 @@ public class ConversationService {
         var result = bot.chat(conversation.providerId(), conversation.messages(), conversationId, senderIdentity);
         conversation.messages().add(ChatMessage.of("assistant", result.assistantContent()));
         conversationRepository.save(conversation);
-
-        if (!result.pendingSubConversationIds().isEmpty()) {
-            var delegationService = delegationServiceProvider.getIfAvailable();
-            if (delegationService != null) {
-                delegationService.startSubAgents(result.pendingSubConversationIds());
-            }
-        }
-
         return result.response();
     }
 
@@ -159,12 +142,6 @@ public class ConversationService {
         return bot.chatStream(conversation.providerId(), conversation.messages(), conversationId, result -> {
             conversation.messages().add(ChatMessage.of("assistant", result.assistantContent()));
             conversationRepository.save(conversation);
-            if (!result.pendingSubConversationIds().isEmpty()) {
-                var delegationService = delegationServiceProvider.getIfAvailable();
-                if (delegationService != null) {
-                    delegationService.startSubAgents(result.pendingSubConversationIds());
-                }
-            }
         }, senderIdentity);
     }
 

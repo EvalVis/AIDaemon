@@ -6,17 +6,16 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.Map;
 
-public record ChatResult(String response,
-                         List<String> pendingSubConversationIds, List<StreamChunk> orderedParts, String reasoning) {
+public record ChatResult(String response, List<StreamChunk> orderedParts, String reasoning) {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
-    public ChatResult(String response, List<String> pendingSubConversationIds) {
-        this(response, pendingSubConversationIds, null, null);
+    public ChatResult(String response) {
+        this(response, null, null);
     }
 
-    public ChatResult(String response, List<String> pendingSubConversationIds, List<StreamChunk> orderedParts) {
-        this(response, pendingSubConversationIds, orderedParts, null);
+    public ChatResult(String response, List<StreamChunk> orderedParts) {
+        this(response, orderedParts, null);
     }
 
     public String assistantContent() {
