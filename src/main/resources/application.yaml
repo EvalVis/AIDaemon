@@ -14,8 +14,6 @@ aidaemon:
   shell-access: false
   manual-approve: true
   tool-execution-timeout-seconds: 300
-  delegation-enabled: false
-  delegation-threshold-seconds: 30
   context-window:
     chars-limit: 5000
     personal-memory-ratio: 0.3
