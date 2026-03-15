@@ -83,7 +83,6 @@ export default function App() {
       id: res.conversationId,
       name: res.name,
       providerId: res.providerId ?? null,
-      botName: res.botName ?? null,
       messages: [],
     };
     setConversations((prev) => [...prev, conv]);
@@ -112,12 +111,6 @@ export default function App() {
     );
   };
 
-  const handleUpdateConversationBot = async (id: string, botName: string | null) => {
-    const updated = await api.updateConversation(id, { botName });
-    setConversations((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, botName: updated.botName ?? null } : c)),
-    );
-  };
 
   const handleDeleteConversation = async (id: string) => {
     await api.deleteConversation(id);
@@ -138,7 +131,7 @@ export default function App() {
     setConversations((prev) =>
       prev.map((c) =>
         c.id === activeId
-          ? { ...c, messages: [...c.messages, { role: 'user', content: message, timestampMillis: Date.now(), files }] }
+          ? { ...c, messages: [...c.messages, { participant: 'user', content: message, timestampMillis: Date.now(), files }] }
           : c,
       ),
     );
@@ -258,7 +251,6 @@ export default function App() {
         headerTitle={headerTitle}
         conversation={activeConversation}
         providers={providers}
-        bots={bots}
         sending={sending}
         streaming={streaming}
         lastStreamedContent={activeId && lastStreamedContent?.conversationId === activeId ? lastStreamedContent : null}
@@ -266,7 +258,6 @@ export default function App() {
         onInputDraftChange={setInputDraft}
         onSend={handleSend}
         onUpdateProvider={handleUpdateConversationProvider}
-        onUpdateBot={handleUpdateConversationBot}
         pendingApprovals={pendingApprovals}
         onApproveTool={handleApproveTool}
         onRejectTool={handleRejectTool}

@@ -1,15 +1,14 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import type { Bot, ChatMessage, Conversation, FileAttachment, PendingToolApproval, Provider } from '../types';
+import type { ChatMessage, Conversation, FileAttachment, PendingToolApproval, Provider } from '../types';
 import type { StreamingContent, StreamPart } from '../App';
 import * as api from '../api';
 
-type DisplayMessage = ChatMessage | { role: 'assistant'; parts: StreamPart[] };
+type DisplayMessage = ChatMessage | { participant: string; parts: StreamPart[] };
 
 interface ChatWindowProps {
   headerTitle: string;
   conversation: Conversation | null;
   providers: Provider[];
-  bots: Bot[];
   sending: boolean;
   streaming: StreamingContent | null;
   lastStreamedContent: { reasoning: string; parts: StreamPart[] } | null;
@@ -17,7 +16,6 @@ interface ChatWindowProps {
   onInputDraftChange: (value: string) => void;
   onSend: (message: string, attachments?: FileAttachment[]) => void;
   onUpdateProvider: (conversationId: string, providerId: string | null) => void;
-  onUpdateBot: (conversationId: string, botName: string | null) => void;
   pendingApprovals: PendingToolApproval[];
   onApproveTool: (approvalId: string, note: string) => void;
   onRejectTool: (approvalId: string, note: string) => void;
@@ -32,25 +30,12 @@ function formatTime(ms: number): string {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad3(d.getMilliseconds())}`;
 }
 
-function roleDisplayName(role: string, conversation: Conversation | null): string {
-  if (!conversation) return role;
-  if (role === 'user') {
-    const p1 = conversation.participant1 ?? '';
-    const p2 = conversation.participant2 ?? '';
-    const bot = conversation.botName ?? '';
-    if (p1 && p2 && bot && p1 !== 'user' && p2 !== 'user') {
-      return p1 === bot ? p2 : p1;
-    }
-    return 'user';
-  }
-  if (role === 'assistant') {
-    const bot = conversation.botName ?? '';
-    if (bot) return bot;
-    const p1 = conversation.participant1 ?? '';
-    const p2 = conversation.participant2 ?? '';
-    if (p1 && p2) return p1 === 'user' ? p2 : p2 === 'user' ? p1 : p2;
-  }
-  return role;
+function participantDisplayName(participant: string): string {
+  return participant || 'user';
+}
+
+function getMessageParticipant(msg: DisplayMessage): string {
+  return msg.participant;
 }
 
 function getMessagePlainText(msg: DisplayMessage, includeThinking: boolean): string {
@@ -277,29 +262,28 @@ function ToolApprovalCard({
 
 function MessageEntry({
   msg,
-  conversation,
   speaking,
   onSpeak,
 }: {
   msg: DisplayMessage;
-  conversation: Conversation | null;
   speaking?: boolean;
   onSpeak?: () => void;
 }) {
+  const participant = getMessageParticipant(msg);
   const hasParts = 'parts' in msg && msg.parts != null;
-  const userParts = msg.role === 'user' && 'content' in msg ? parseUserParts(msg.content) : null;
-  const [collapsed, setCollapsed] = useState(msg.role === 'tool' && !hasParts);
+  const userParts = participant === 'user' && 'content' in msg ? parseUserParts(msg.content) : null;
+  const [collapsed, setCollapsed] = useState(participant === 'tool' && !hasParts);
   const content = 'content' in msg ? msg.content : '';
   const preview = content.slice(0, PREVIEW_LENGTH) + (content.length > PREVIEW_LENGTH ? '…' : '');
   const timeStr = 'timestampMillis' in msg && msg.timestampMillis != null && msg.timestampMillis > 0
     ? formatTime(msg.timestampMillis) : null;
-  const displayName = roleDisplayName(msg.role, conversation);
-  const canSpeak = msg.role !== 'tool';
+  const displayName = participantDisplayName(participant);
+  const canSpeak = participant !== 'tool';
 
   const messageStyles =
-    msg.role === 'user'
+    participant === 'user'
       ? 'max-w-[80%] py-2.5 px-3.5 rounded-lg text-sm leading-relaxed whitespace-pre-wrap break-words self-end bg-user-bg text-text-bright'
-      : msg.role === 'tool'
+      : participant === 'tool'
         ? 'max-w-[90%] py-2.5 px-3.5 rounded-lg text-xs leading-relaxed whitespace-pre-wrap break-words self-start bg-tool-bg border border-tool-border font-mono'
         : 'max-w-[80%] py-2.5 px-3.5 rounded-lg text-sm leading-relaxed whitespace-pre-wrap break-words self-start bg-assistant-bg border border-border';
 
@@ -343,7 +327,7 @@ function MessageEntry({
       {!collapsed && (
         <div className="text-text-bright mt-1.5 min-w-0 break-words">
           {hasParts
-            ? (msg as { role: 'assistant'; parts: StreamPart[] }).parts.map((part, i) =>
+            ? (msg as { parts: StreamPart[] }).parts.map((part, i) =>
                 part.type === 'tool' ? (
                   <details key={i} className="message-tool-part my-2 py-2 px-2.5 bg-tool-bg border border-tool-border rounded-lg text-tool-text max-w-full overflow-hidden" open>
                     <summary className="flex items-center gap-2 cursor-pointer text-xs font-semibold uppercase text-tool-summary list-none [&::-webkit-details-marker]:hidden [&::marker]:hidden">
@@ -447,23 +431,27 @@ function filterParts(parts: StreamPart[], hideToolsAndThinking: boolean): Stream
 function getDisplayMessages(
   messages: ChatMessage[],
   hideToolsAndThinking: boolean,
-  lastStreamedContent: { reasoning: string; parts: StreamPart[] } | null
+  lastStreamedContent: { reasoning: string; parts: StreamPart[] } | null,
+  conversation: Conversation | null
 ): DisplayMessage[] {
   let list: DisplayMessage[] = messages.map((msg) => {
-    if (msg.role === 'assistant') {
+    if (getMessageParticipant(msg) !== 'user' && getMessageParticipant(msg) !== 'tool') {
       const parts = parseStructuredContent(msg.content);
-      if (parts) return { role: 'assistant' as const, parts: filterParts(parts, hideToolsAndThinking) };
+      if (parts) return { participant: msg.participant, parts: filterParts(parts, hideToolsAndThinking) };
     }
     return msg;
   });
   if (lastStreamedContent && list.length > 0) {
-    const lastUserIdx = Math.max(...list.map((msg, i) => (msg.role === 'user' ? i : -1)));
+    const lastUserIdx = Math.max(...list.map((msg, i) => (getMessageParticipant(msg) === 'user' ? i : -1)));
     const afterLastUser = list.slice(lastUserIdx + 1);
-    if (afterLastUser.length === 1 && afterLastUser[0].role === 'assistant') {
+    if (afterLastUser.length === 1 && getMessageParticipant(afterLastUser[0]) !== 'user' && getMessageParticipant(afterLastUser[0]) !== 'tool') {
       const parts: StreamPart[] = lastStreamedContent.reasoning
         ? [{ type: 'reasoning', content: lastStreamedContent.reasoning }, ...lastStreamedContent.parts]
         : lastStreamedContent.parts;
-      list = [...list.slice(0, lastUserIdx + 1), { role: 'assistant', parts: filterParts(parts, hideToolsAndThinking) }];
+      const replyingParticipant = conversation?.participant1 && conversation?.participant2
+        ? (conversation.participant1 === 'user' ? conversation.participant2 : conversation.participant2 === 'user' ? conversation.participant1 : conversation.participant2)
+        : 'assistant';
+      list = [...list.slice(0, lastUserIdx + 1), { participant: replyingParticipant, parts: filterParts(parts, hideToolsAndThinking) }];
     }
   }
   return list;
@@ -580,7 +568,6 @@ export default function ChatWindow({
   headerTitle,
   conversation,
   providers,
-  bots,
   sending,
   streaming,
   lastStreamedContent,
@@ -588,7 +575,6 @@ export default function ChatWindow({
   onInputDraftChange,
   onSend,
   onUpdateProvider,
-  onUpdateBot,
   pendingApprovals,
   onApproveTool,
   onRejectTool,
@@ -635,7 +621,7 @@ export default function ChatWindow({
   }, [inputDraft]);
 
   const visibleMessages = conversation
-    ? getDisplayMessages(conversation.messages, hideToolsAndThinking, lastStreamedContent)
+    ? getDisplayMessages(conversation.messages, hideToolsAndThinking, lastStreamedContent, conversation)
     : [];
 
   useEffect(() => {
@@ -643,9 +629,6 @@ export default function ChatWindow({
   }, [conversation?.messages.length, streaming?.reasoning, streaming?.parts?.length]);
 
   const hasProvider = Boolean(conversation?.providerId);
-  const isDirectChat = Boolean(
-    conversation?.participant1 != null && conversation?.participant2 != null
-  );
 
   const handleSend = () => {
     if (sending || !hasProvider) return;
@@ -851,13 +834,15 @@ export default function ChatWindow({
           <MessageEntry
             key={i}
             msg={msg}
-            conversation={conversation}
             speaking={speakingIdx === i}
             onSpeak={() => speakMessage(msg, i)}
           />
         ))}
         {sending && (() => {
-          const assistantLabel = roleDisplayName('assistant', conversation);
+          const replyingParticipant = conversation?.participant1 && conversation?.participant2
+            ? (conversation.participant1 === 'user' ? conversation.participant2 : conversation.participant2 === 'user' ? conversation.participant1 : conversation.participant2)
+            : 'assistant';
+          const assistantLabel = participantDisplayName(replyingParticipant);
           return (
           <div className="max-w-[80%] py-2.5 px-3.5 rounded-lg text-sm leading-relaxed self-start bg-assistant-bg border border-border opacity-95">
             <div className="flex items-baseline gap-2 cursor-pointer select-none">
@@ -982,18 +967,6 @@ export default function ChatWindow({
               <option key={p.id} value={p.id}>{p.name}</option>
             ))}
           </select>
-          {!isDirectChat && (
-            <select
-              value={conversation.botName ?? 'default'}
-              onChange={(e) => onUpdateBot(conversation.id, e.target.value === 'default' ? null : e.target.value)}
-              className="py-1.5 px-2.5 bg-bg-input text-text border border-border rounded-lg text-[0.8125rem] outline-none focus:border-accent min-w-[140px]"
-            >
-              <option value="default">default</option>
-              {bots.map((b) => (
-                <option key={b.name} value={b.name}>{b.name}</option>
-              ))}
-            </select>
-          )}
           {!hasProvider && (
             <span className="text-[0.6875rem] text-text-dim">Select agent to send</span>
           )}

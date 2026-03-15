@@ -7,16 +7,15 @@ import java.util.List;
 public record Conversation(String id,
                            String name,
                            String providerId,
-                           String botName,
                            List<ChatMessage> messages,
                            Long createdAtMillis,
                            String participant1,
                            String participant2,
                            Boolean direct) {
 
-    public Conversation(String id, String name, String providerId, String botName, List<ChatMessage> messages,
+    public Conversation(String id, String name, String providerId, List<ChatMessage> messages,
                         Long createdAtMillis) {
-        this(id, name, providerId, botName, messages, createdAtMillis, null, null, null);
+        this(id, name, providerId, messages, createdAtMillis, null, null, null);
     }
 
     public static String canonicalId(String a, String b) {

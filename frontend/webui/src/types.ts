@@ -5,7 +5,7 @@ export interface FileAttachment {
 }
 
 export interface ChatMessage {
-  role: string;
+  participant: string;
   content: string;
   timestampMillis?: number;
   files?: FileAttachment[];
@@ -15,7 +15,6 @@ export interface Conversation {
   id: string;
   name: string;
   providerId: string | null;
-  botName?: string | null;
   messages: ChatMessage[];
   parentConversationId?: string | null;
   createdAtMillis?: number | null;

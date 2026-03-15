@@ -44,7 +44,7 @@ export async function getOrCreateDirectConversation(
 export async function createConversation(
   name: string,
   providerId?: string | null
-): Promise<{ conversationId: string; name: string; providerId: string | null; botName?: string | null }> {
+): Promise<{ conversationId: string; name: string; providerId: string | null }> {
   const res = await fetch('/api/conversations', {
     method: 'POST',
     headers: JSON_HEADERS,
@@ -55,7 +55,7 @@ export async function createConversation(
 
 export async function updateConversation(
   id: string,
-  patch: { providerId?: string | null; botName?: string | null }
+  patch: { providerId?: string | null }
 ): Promise<Conversation> {
   const res = await fetch(`/api/conversations/${id}`, {
     method: 'PATCH',

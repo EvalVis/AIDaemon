@@ -55,7 +55,7 @@ public class ConversationController {
             providerId = (raw == null || raw.isBlank()) ? null : raw;
         }
         var updated = new Conversation(
-                conversation.id(), conversation.name(), providerId, conversation.botName(),
+                conversation.id(), conversation.name(), providerId,
                 conversation.messages(), conversation.createdAtMillis(),
                 conversation.participant1(), conversation.participant2(), conversation.direct());
         conversationService.save(updated);

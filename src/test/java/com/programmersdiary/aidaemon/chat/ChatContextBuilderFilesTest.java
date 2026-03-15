@@ -7,6 +7,7 @@ import com.programmersdiary.aidaemon.skills.SkillsService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.content.Media;
 
@@ -125,5 +126,17 @@ class ChatContextBuilderFilesTest {
                 .findFirst();
         assertTrue(historyText.isPresent());
         assertTrue(historyText.get().contains("photo.png"), "should include file name reference");
+    }
+
+    @Test
+    void buildMessages_mapsParticipantToAssistantWhenReplyingBotMatches() {
+        var messages = List.of(
+                ChatMessage.of("user", "hello"),
+                ChatMessage.of("short", "Hi there!")
+        );
+        var result = builder.buildMessages(messages, "short", 10, 0, "sys", null);
+        var lastMsg = result.get(result.size() - 1);
+        assertInstanceOf(AssistantMessage.class, lastMsg);
+        assertTrue(((AssistantMessage) lastMsg).getText().contains("Hi there!"));
     }
 }

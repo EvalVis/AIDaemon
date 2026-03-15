@@ -81,7 +81,7 @@ public class ChatToolCallbacksService {
 
     public List<ToolCallback> buildToolCallbacks(StreamRequestMetadata meta, String providerId,
                                                   Consumer<StreamChunk> onFileChangeChunk) {
-        var filtered = meta.messages().stream().filter(m -> !"tool".equals(m.role())).toList();
+        var filtered = meta.messages().stream().filter(m -> !"tool".equals(m.participant())).toList();
         var list = new ArrayList<ToolCallback>();
 
         list.addAll(Arrays.asList(ToolCallbacks.from(new ChatTools(skillsService, jobExecutor, providerId, filtered,

@@ -70,7 +70,7 @@ public class Bot {
     }
 
     private void appendToPersonalMemoryAfterChat(List<ChatMessage> messages, ChatResult result) {
-        var filtered = messages.stream().filter(m -> !"tool".equals(m.role())).toList();
+        var filtered = messages.stream().filter(m -> !"tool".equals(m.participant())).toList();
         if (filtered.isEmpty()) return;
         var history = filtered.subList(0, filtered.size() - 1);
         var contextConversation = new ArrayList<ChatMessage>();

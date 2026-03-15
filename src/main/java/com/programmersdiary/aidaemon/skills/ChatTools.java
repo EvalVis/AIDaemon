@@ -147,7 +147,7 @@ public class ChatTools {
         int totalChars = 0;
         boolean hasLimit = charsContextWindow > 0;
         for (int i = startIndexInclusive; i < end; i++) {
-            String displayContent = contentWithoutReasoningAndTools(conversationMessages.get(i));
+            String displayContent = contentWithoutReasoningAndTools(conversationMessages.get(i), botName);
             int len = displayContent.length();
             if (hasLimit && totalChars + len > charsContextWindow) {
                 break;
@@ -159,8 +159,8 @@ public class ChatTools {
         var lines = new ArrayList<String>();
         for (int i = 0; i < slice.size(); i++) {
             var m = slice.get(i);
-            String displayContent = contentWithoutReasoningAndTools(m);
-            lines.add("[" + (startIndexInclusive + i) + "] " + m.role() + ": " + displayContent);
+            String displayContent = contentWithoutReasoningAndTools(m, botName);
+            lines.add("[" + (startIndexInclusive + i) + "] " + m.participant() + ": " + displayContent);
         }
         return "startIndex: " + startIndexInclusive + ", actualEndIndex: " + actualEnd + ", messages:\n" + String.join("\n", lines);
     }
@@ -196,10 +196,10 @@ public class ChatTools {
         return "startIndex: " + startIndexInclusive + ", actualEndIndex: " + end + ", entries:\n" + String.join("\n", lines);
     }
 
-    private static String contentWithoutReasoningAndTools(ChatMessage message) {
+    private static String contentWithoutReasoningAndTools(ChatMessage message, String replyingBotName) {
         String content = message.content();
         if (content == null) return "";
-        if (!"assistant".equals(message.role())) return content;
+        if (replyingBotName == null || !replyingBotName.equals(message.participant())) return content;
         if (!content.trim().startsWith("{\"parts\":")) return content;
         try {
             @SuppressWarnings("unchecked")

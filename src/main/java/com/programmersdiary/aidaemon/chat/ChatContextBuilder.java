@@ -59,12 +59,12 @@ public class ChatContextBuilder {
         this.objectMapper = new ObjectMapper();
     }
 
-    public List<Message> buildMessages(List<ChatMessage> messages, String botName,
+    public List<Message> buildMessages(List<ChatMessage> messages, String replyingBotName,
                                       int conversationLimit, int personalMemoryLimit, String systemInstructions,
                                       String senderIdentity) {
         var springMessages = new ArrayList<Message>();
         springMessages.add(SystemMessage.builder().text(systemInstructions != null ? systemInstructions : "").metadata(cacheControl()).build());
-        var soul = botService.loadSoul(botName);
+        var soul = botService.loadSoul(replyingBotName);
         if (soul != null && !soul.isBlank()) {
             springMessages.add(new SystemMessage(soul));
         }
@@ -73,7 +73,7 @@ public class ChatContextBuilder {
                     "The message is from bot named \"" + senderIdentity + "\"."));
         }
         if (personalMemoryLimit > 0) {
-            var trimmed = botService.loadPersonalMemoryTrimmed(botName, personalMemoryLimit);
+            var trimmed = botService.loadPersonalMemoryTrimmed(replyingBotName, personalMemoryLimit);
             if (!trimmed.entries().isEmpty()) {
                 springMessages.add(new SystemMessage(
                         "Personal memory (recent interactions across conversations). "
@@ -83,7 +83,7 @@ public class ChatContextBuilder {
             }
         }
         springMessages.addAll(memoryMessages());
-        var filtered = messages.stream().filter(m -> !"tool".equals(m.role())).toList();
+        var filtered = messages.stream().filter(m -> !"tool".equals(m.participant())).toList();
         var history = filtered.subList(0, filtered.size() - 1);
         if (!history.isEmpty()) {
             var trimmed = ContextWindowTrimmer.trimChatHistory(history, conversationLimit);
@@ -92,9 +92,9 @@ public class ChatContextBuilder {
                     "This conversation has " + filtered.size() + " messages. "
                             + "Your current context includes messages from index " + firstInContext + " (inclusive) to the latest. "
                             + "Use retrieve_older_messages tool to fetch earlier messages if needed."));
-            springMessages.addAll(conversationHistory(trimmed));
+            springMessages.addAll(conversationHistory(trimmed, replyingBotName));
         }
-        springMessages.add(toCurrentMessage(filtered.get(filtered.size() - 1)));
+        springMessages.add(toCurrentMessage(filtered.get(filtered.size() - 1), replyingBotName));
         return springMessages;
     }
 
@@ -129,40 +129,50 @@ public class ChatContextBuilder {
         return result;
     }
 
-    private List<Message> conversationHistory(List<ChatMessage> trimmedHistory) {
+    private List<Message> conversationHistory(List<ChatMessage> trimmedHistory, String replyingBotName) {
         var result = new ArrayList<Message>();
         if (!trimmedHistory.isEmpty()) {
-            trimmedHistory.forEach(m -> result.add(toHistorySpringMessage(m)));
-            result.add(toCachedSpringMessage(trimmedHistory.get(trimmedHistory.size() - 1)));
+            trimmedHistory.forEach(m -> result.add(toHistorySpringMessage(m, replyingBotName)));
+            result.add(toCachedSpringMessage(trimmedHistory.get(trimmedHistory.size() - 1), replyingBotName));
         }
         return result;
     }
 
-    private Message toHistorySpringMessage(ChatMessage message) {
-        return switch (message.role()) {
-            case "system" -> new SystemMessage(message.content());
-            case "assistant" -> new AssistantMessage(flattenStructuredContent(message.content()));
-            default -> new UserMessage(contentWithFileReferences(message));
-        };
+    private Message toHistorySpringMessage(ChatMessage message, String replyingBotName) {
+        return toSpringMessage(message, replyingBotName);
     }
 
-    private Message toCachedSpringMessage(ChatMessage message) {
-        return switch (message.role()) {
-            case "system" -> SystemMessage.builder().text(message.content()).metadata(cacheControl()).build();
-            case "assistant" -> AssistantMessage.builder()
-                    .content(flattenStructuredContent(message.content()))
+    private Message toCachedSpringMessage(ChatMessage message, String replyingBotName) {
+        var p = message.participant();
+        var content = message.content() != null ? message.content() : "";
+        if ("system".equals(p)) {
+            return SystemMessage.builder().text(content).metadata(cacheControl()).build();
+        }
+        if (replyingBotName != null && replyingBotName.equals(p)) {
+            return AssistantMessage.builder()
+                    .content(flattenStructuredContent(content))
                     .properties(cacheControl())
                     .build();
-            default -> UserMessage.builder().text(contentWithFileReferences(message)).metadata(cacheControl()).build();
-        };
+        }
+        return UserMessage.builder().text(contentWithFileReferences(message)).metadata(cacheControl()).build();
     }
 
-    private Message toCurrentMessage(ChatMessage message) {
-        return switch (message.role()) {
-            case "system" -> new SystemMessage(message.content());
-            case "assistant" -> new AssistantMessage(flattenStructuredContent(message.content()));
-            default -> buildCurrentUserMessage(message);
-        };
+    private Message toSpringMessage(ChatMessage message, String replyingBotName) {
+        var p = message.participant();
+        if ("system".equals(p)) return new SystemMessage(message.content());
+        if (replyingBotName != null && replyingBotName.equals(p)) {
+            return new AssistantMessage(flattenStructuredContent(message.content()));
+        }
+        return new UserMessage(contentWithFileReferences(message));
+    }
+
+    private Message toCurrentMessage(ChatMessage message, String replyingBotName) {
+        var p = message.participant();
+        if ("system".equals(p)) return new SystemMessage(message.content());
+        if (replyingBotName != null && replyingBotName.equals(p)) {
+            return new AssistantMessage(flattenStructuredContent(message.content()));
+        }
+        return buildCurrentUserMessage(message);
     }
 
     private UserMessage buildCurrentUserMessage(ChatMessage message) {

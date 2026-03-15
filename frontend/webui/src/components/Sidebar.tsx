@@ -174,7 +174,7 @@ export default function Sidebar({
           <div className="py-1 px-3 pb-2 pl-8 flex flex-col gap-0.5 bg-bg-sidebar">
             {node.messages.slice(-4).map((m, i) => (
               <div key={i} className="flex gap-1.5 text-xs leading-snug">
-                <span className="text-text-dim shrink-0 font-semibold uppercase text-[0.625rem] mt-px">{m.role}</span>
+                <span className="text-text-dim shrink-0 font-semibold uppercase text-[0.625rem] mt-px">{m.participant}</span>
                 <span className="text-text overflow-hidden text-ellipsis whitespace-nowrap">
                   {typeof m.content === 'string' ? m.content.slice(0, 80) : ''}
                   {typeof m.content === 'string' && m.content.length > 80 ? '…' : ''}

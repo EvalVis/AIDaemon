@@ -82,8 +82,9 @@ public class BotService {
         var entries = new ArrayList<PersonalMemoryEntry>();
         if (contextConversation != null) {
             for (var m : contextConversation) {
-                if ("system".equals(m.role())) continue;
-                entries.add(new PersonalMemoryEntry(m.role(), m.content() != null ? m.content() : ""));
+                if ("system".equals(m.participant())) continue;
+                var role = botName.equals(m.participant()) ? "assistant" : "user";
+                entries.add(new PersonalMemoryEntry(role, m.content() != null ? m.content() : ""));
             }
         }
         entries.add(new PersonalMemoryEntry("assistant", assistantContent != null ? assistantContent : ""));
