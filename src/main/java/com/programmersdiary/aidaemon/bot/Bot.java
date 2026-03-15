@@ -5,15 +5,12 @@ import com.programmersdiary.aidaemon.chat.ChatMessage;
 import com.programmersdiary.aidaemon.chat.ChatResult;
 import com.programmersdiary.aidaemon.chat.ChatService;
 import com.programmersdiary.aidaemon.chat.ContextConfig;
-import com.programmersdiary.aidaemon.chat.StreamChunk;
 import com.programmersdiary.aidaemon.chat.StreamRequestMetadata;
 import com.programmersdiary.aidaemon.files.FileStorageService;
 import com.programmersdiary.aidaemon.skills.SkillsService;
 import org.springframework.ai.chat.messages.Message;
-import reactor.core.publisher.Flux;
 
 import java.util.List;
-import java.util.function.Consumer;
 
 public class Bot {
 
@@ -38,24 +35,13 @@ public class Bot {
 
     public ChatResult chat(String providerId, List<ChatMessage> messages, String conversationId, String senderIdentity) {
         var meta = streamRequestMetadata(messages, conversationId);
-        var contextMessages = buildContext(messages, senderIdentity);
+        var contextMessages = buildContext(messages, senderIdentity, conversationId);
         return chatService.streamAndCollect(providerId, contextMessages, meta);
     }
 
-    public Flux<StreamChunk> chatStream(String providerId, List<ChatMessage> messages, String conversationId,
-                                       Consumer<ChatResult> onComplete, String senderIdentity) {
-        var meta = streamRequestMetadata(messages, conversationId);
-        var contextMessages = buildContext(messages, senderIdentity);
-        return chatService.stream(providerId, contextMessages, meta, onComplete);
-    }
-
-    public List<Message> buildContext(List<ChatMessage> messages) {
-        return buildContext(messages, null);
-    }
-
-    public List<Message> buildContext(List<ChatMessage> messages, String senderIdentity) {
+    public List<Message> buildContext(List<ChatMessage> messages, String senderIdentity, String conversationId) {
         return contextBuilder.buildMessages(messages, name, contextConfig.charsLimit(),
-                contextConfig.systemInstructions(), senderIdentity);
+                contextConfig.systemInstructions(), senderIdentity, conversationId);
     }
 
     public StreamRequestMetadata streamRequestMetadata(List<ChatMessage> messages, String conversationId) {

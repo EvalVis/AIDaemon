@@ -65,8 +65,7 @@ public class ConversationService {
                 if (conv == null || conv.providerId() == null || conv.providerId().isBlank()) return;
                 var bot = botService.getBot(botName);
                 var senderIdentity = lastBotSenderOf(conv, botName);
-                var result = bot.chat(conv.providerId(), conv.messages(), conversationId, senderIdentity);
-                conversationRepository.addMessage(conversationId, ChatMessage.of(botName, result.assistantContent()));
+                bot.chat(conv.providerId(), conv.messages(), conversationId, senderIdentity);
             } catch (Exception e) {
                 log.error("triggerBotReplyAsync failed for bot='{}' conv='{}'", botName, conversationId, e);
             }

@@ -60,20 +60,23 @@ public class ChatContextBuilder {
 
     public List<Message> buildMessages(List<ChatMessage> messages, String replyingBotName,
                                       int conversationLimit, String systemInstructions,
-                                      String senderIdentity) {
+                                      String senderIdentity, String conversationId) {
         var springMessages = new ArrayList<Message>();
         springMessages.add(SystemMessage.builder().text(systemInstructions != null ? systemInstructions : "").metadata(cacheControl()).build());
         var soul = botService.loadSoul(replyingBotName);
         if (soul != null && !soul.isBlank()) {
             springMessages.add(new SystemMessage(soul));
         }
-        if (senderIdentity != null && !senderIdentity.isBlank() && !"user".equalsIgnoreCase(senderIdentity)) {
-            springMessages.add(new SystemMessage(
-                    "You have been triggered by bot \"" + senderIdentity + "\". "
-                    + "To continue the conversation, use the writeToConversation tool with the conversation ID and the list of bots to wake up. "
-                    + "Use listMyConversations to find your conversation IDs. "
-                    + "Only wake up other bots if the conversation should continue — do not loop indefinitely."));
+        var sb = new StringBuilder();
+        if (conversationId != null) {
+            sb.append("You are in conversation ").append(conversationId).append(". ");
         }
+        sb.append("You MUST write your response using the writeToConversation tool. Do not respond with plain text — your message will not be saved otherwise.");
+        if (senderIdentity != null && !senderIdentity.isBlank() && !"user".equalsIgnoreCase(senderIdentity)) {
+            sb.append(" You were triggered by bot \"").append(senderIdentity).append("\".")
+              .append(" Only continue the conversation if it makes sense — do not loop indefinitely.");
+        }
+        springMessages.add(new SystemMessage(sb.toString()));
         springMessages.addAll(memoryMessages());
         var filtered = messages.stream().filter(m -> !"tool".equals(m.participant())).toList();
         var history = filtered.subList(0, filtered.size() - 1);
