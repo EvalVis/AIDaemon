@@ -3,7 +3,6 @@ package com.programmersdiary.aidaemon.chat;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.programmersdiary.aidaemon.bot.BotService;
-import com.programmersdiary.aidaemon.bot.PersonalMemoryEntry;
 import com.programmersdiary.aidaemon.files.FileAttachment;
 import com.programmersdiary.aidaemon.files.FileStorageService;
 import com.programmersdiary.aidaemon.skills.SkillsService;
@@ -60,7 +59,7 @@ public class ChatContextBuilder {
     }
 
     public List<Message> buildMessages(List<ChatMessage> messages, String replyingBotName,
-                                      int conversationLimit, int personalMemoryLimit, String systemInstructions,
+                                      int conversationLimit, String systemInstructions,
                                       String senderIdentity) {
         var springMessages = new ArrayList<Message>();
         springMessages.add(SystemMessage.builder().text(systemInstructions != null ? systemInstructions : "").metadata(cacheControl()).build());
@@ -70,17 +69,10 @@ public class ChatContextBuilder {
         }
         if (senderIdentity != null && !senderIdentity.isBlank() && !"user".equalsIgnoreCase(senderIdentity)) {
             springMessages.add(new SystemMessage(
-                    "The message is from bot named \"" + senderIdentity + "\"."));
-        }
-        if (personalMemoryLimit > 0) {
-            var trimmed = botService.loadPersonalMemoryTrimmed(replyingBotName, personalMemoryLimit);
-            if (!trimmed.entries().isEmpty()) {
-                springMessages.add(new SystemMessage(
-                        "Personal memory (recent interactions across conversations). "
-                                + trimmed.totalEntryCount() + " messages in total. Current context: message index "
-                                + trimmed.startIndexInclusive() + " (inclusive) to latest. Use retrieve_older_messages for conversation history; use retrieve_older_personal_memory for older personal memory."));
-                springMessages.addAll(personalMemoryToMessages(trimmed.entries()));
-            }
+                    "You have been triggered by bot \"" + senderIdentity + "\". "
+                    + "To continue the conversation, use the writeToConversation tool with the conversation ID and the list of bots to wake up. "
+                    + "Use listMyConversations to find your conversation IDs. "
+                    + "Only wake up other bots if the conversation should continue — do not loop indefinitely."));
         }
         springMessages.addAll(memoryMessages());
         var filtered = messages.stream().filter(m -> !"tool".equals(m.participant())).toList();
@@ -107,25 +99,6 @@ public class ChatContextBuilder {
                 .text(memory.get(memory.size() - 1).getKey() + ": " + memory.get(memory.size() - 1).getValue())
                 .metadata(cacheControl())
                 .build());
-        return result;
-    }
-
-    private List<Message> personalMemoryToMessages(List<PersonalMemoryEntry> entries) {
-        var result = new ArrayList<Message>();
-        for (int i = 0; i < entries.size(); i++) {
-            var e = entries.get(i);
-            var content = e.content() != null ? e.content() : "";
-            var isLast = i == entries.size() - 1;
-            switch (e.role().toLowerCase()) {
-                case "user" -> result.add(isLast
-                        ? UserMessage.builder().text(content).metadata(cacheControl()).build()
-                        : new UserMessage(content));
-                case "assistant" -> result.add(isLast
-                        ? AssistantMessage.builder().content(content).properties(cacheControl()).build()
-                        : new AssistantMessage(content));
-                default -> result.add(new SystemMessage("[Tool] " + content));
-            }
-        }
         return result;
     }
 

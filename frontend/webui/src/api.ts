@@ -28,28 +28,30 @@ export async function fetchConversations(participant?: string | null): Promise<C
   return res.json();
 }
 
-export async function getOrCreateDirectConversation(
-  botName: string,
-  providerId?: string | null
-): Promise<Conversation> {
-  const params = providerId ? `?providerId=${encodeURIComponent(providerId)}` : '';
-  const res = await fetch(`/api/conversations/direct/${encodeURIComponent(botName)}${params}`);
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(err || res.statusText);
-  }
-  return res.json();
-}
-
 export async function createConversation(
   name: string,
-  providerId?: string | null
-): Promise<{ conversationId: string; name: string; providerId: string | null }> {
+  providerId?: string | null,
+  participants?: string[]
+): Promise<Conversation> {
+  const body: Record<string, unknown> = { name };
+  if (providerId != null) body.providerId = providerId;
+  if (participants != null && participants.length > 0) body.participants = participants;
   const res = await fetch('/api/conversations', {
     method: 'POST',
     headers: JSON_HEADERS,
-    body: JSON.stringify(providerId != null ? { name, providerId } : { name }),
+    body: JSON.stringify(body),
   });
+  if (!res.ok) throw new Error(await res.text() || res.statusText);
+  return res.json();
+}
+
+export async function addParticipant(conversationId: string, participantName: string): Promise<Conversation> {
+  const res = await fetch(`/api/conversations/${encodeURIComponent(conversationId)}/participants`, {
+    method: 'POST',
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ participantName }),
+  });
+  if (!res.ok) throw new Error(await res.text() || res.statusText);
   return res.json();
 }
 
@@ -94,12 +96,13 @@ export function sendMessageStream(
   onChunk: (chunk: StreamChunk) => void,
   onDone: () => void,
   onError: (err: unknown) => void,
-  fileIds?: string[]
+  fileIds?: string[],
+  notifyParticipants?: string[]
 ): void {
   fetch(`/api/conversations/${conversationId}/messages/stream`, {
     method: 'POST',
     headers: JSON_HEADERS,
-    body: JSON.stringify({ message, fileIds: fileIds ?? [] }),
+    body: JSON.stringify({ message, fileIds: fileIds ?? [], notifyParticipants: notifyParticipants ?? [] }),
   })
     .then(async (res) => {
       if (!res.ok || !res.body) {

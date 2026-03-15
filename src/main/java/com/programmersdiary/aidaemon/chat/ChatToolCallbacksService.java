@@ -40,6 +40,7 @@ public class ChatToolCallbacksService {
     private final ShellAccessService shellAccessService;
     private final ToolApprovalService toolApprovalService;
     private final ConversationService conversationService;
+    private final ConversationRepository conversationRepository;
     private final BotService botService;
     private final BotRepository botRepository;
     private final McpService mcpService;
@@ -53,6 +54,7 @@ public class ChatToolCallbacksService {
                                    ShellAccessService shellAccessService,
                                    ToolApprovalService toolApprovalService,
                                    @Lazy ConversationService conversationService,
+                                   ConversationRepository conversationRepository,
                                    @Lazy BotService botService,
                                    BotRepository botRepository,
                                    McpService mcpService,
@@ -65,6 +67,7 @@ public class ChatToolCallbacksService {
         this.shellAccessService = shellAccessService;
         this.toolApprovalService = toolApprovalService;
         this.conversationService = conversationService;
+        this.conversationRepository = conversationRepository;
         this.botService = botService;
         this.botRepository = botRepository;
         this.mcpService = mcpService;
@@ -85,13 +88,14 @@ public class ChatToolCallbacksService {
         var list = new ArrayList<ToolCallback>();
 
         list.addAll(Arrays.asList(ToolCallbacks.from(new ChatTools(skillsService, jobExecutor, providerId, filtered,
-                meta.conversationLimit(), meta.botName(), botRepository))));
+                meta.conversationLimit(), meta.botName()))));
         list.addAll(Arrays.asList(ToolCallbacks.from(new ShellTool(shellAccessService))));
         list.addAll(Arrays.asList(ToolCallbacks.from(new BotManagementTool(botService))));
 
         var botName = meta.botName();
         if (botName != null && !botName.isBlank()) {
-            list.addAll(Arrays.asList(ToolCallbacks.from(new BotToBotTool(conversationService, botRepository, providerId, botName))));
+            list.addAll(Arrays.asList(ToolCallbacks.from(new ConversationManagementTool(
+                    conversationService, conversationRepository, botRepository, botName, providerId))));
         }
         if (smitheryMcpTool != null) {
             list.addAll(Arrays.asList(ToolCallbacks.from(smitheryMcpTool)));

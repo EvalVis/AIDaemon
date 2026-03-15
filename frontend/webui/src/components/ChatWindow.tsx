@@ -19,6 +19,8 @@ interface ChatWindowProps {
   pendingApprovals: PendingToolApproval[];
   onApproveTool: (approvalId: string, note: string) => void;
   onRejectTool: (approvalId: string, note: string) => void;
+  notifyParticipants: string[];
+  onNotifyParticipantsChange: (participants: string[]) => void;
 }
 
 const PREVIEW_LENGTH = 120;
@@ -448,9 +450,7 @@ function getDisplayMessages(
       const parts: StreamPart[] = lastStreamedContent.reasoning
         ? [{ type: 'reasoning', content: lastStreamedContent.reasoning }, ...lastStreamedContent.parts]
         : lastStreamedContent.parts;
-      const replyingParticipant = conversation?.participant1 && conversation?.participant2
-        ? (conversation.participant1 === 'user' ? conversation.participant2 : conversation.participant2 === 'user' ? conversation.participant1 : conversation.participant2)
-        : 'assistant';
+      const replyingParticipant = conversation?.participants?.find((p) => p !== 'user') ?? 'assistant';
       list = [...list.slice(0, lastUserIdx + 1), { participant: replyingParticipant, parts: filterParts(parts, hideToolsAndThinking) }];
     }
   }
@@ -578,6 +578,8 @@ export default function ChatWindow({
   pendingApprovals,
   onApproveTool,
   onRejectTool,
+  notifyParticipants,
+  onNotifyParticipantsChange,
 }: ChatWindowProps) {
   const [hideToolsAndThinking, setHideToolsAndThinking] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -839,9 +841,7 @@ export default function ChatWindow({
           />
         ))}
         {sending && (() => {
-          const replyingParticipant = conversation?.participant1 && conversation?.participant2
-            ? (conversation.participant1 === 'user' ? conversation.participant2 : conversation.participant2 === 'user' ? conversation.participant1 : conversation.participant2)
-            : 'assistant';
+          const replyingParticipant = conversation?.participants?.find((p) => p !== 'user') ?? 'assistant';
           const assistantLabel = participantDisplayName(replyingParticipant);
           return (
           <div className="max-w-[80%] py-2.5 px-3.5 rounded-lg text-sm leading-relaxed self-start bg-assistant-bg border border-border opacity-95">
@@ -958,8 +958,8 @@ export default function ChatWindow({
         </button>
         <div className="flex flex-col gap-1 items-end shrink-0">
           <select
-            value={conversation.providerId ?? ''}
-            onChange={(e) => onUpdateProvider(conversation.id, e.target.value || null)}
+            value={conversation?.providerId ?? ''}
+            onChange={(e) => conversation && onUpdateProvider(conversation.id, e.target.value || null)}
             className="py-1.5 px-2.5 bg-bg-input text-text border border-border rounded-lg text-[0.8125rem] outline-none focus:border-accent min-w-[140px]"
           >
             <option value="">Select agent…</option>
@@ -967,6 +967,27 @@ export default function ChatWindow({
               <option key={p.id} value={p.id}>{p.name}</option>
             ))}
           </select>
+          {conversation?.participants && conversation.participants.filter((p) => p !== 'user').length > 0 && (
+            <div className="flex flex-wrap gap-x-2 gap-y-0.5 justify-end items-center">
+              <span className="text-[0.625rem] text-text-dim uppercase tracking-wide">Notify</span>
+              {conversation.participants.filter((p) => p !== 'user').map((bot) => (
+                <label key={bot} className="flex items-center gap-1 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={notifyParticipants.includes(bot)}
+                    onChange={() => {
+                      const next = notifyParticipants.includes(bot)
+                        ? notifyParticipants.filter((b) => b !== bot)
+                        : [...notifyParticipants, bot];
+                      onNotifyParticipantsChange(next);
+                    }}
+                    className="accent-accent"
+                  />
+                  <span className="text-[0.6875rem] text-text">{bot}</span>
+                </label>
+              ))}
+            </div>
+          )}
           {!hasProvider && (
             <span className="text-[0.6875rem] text-text-dim">Select agent to send</span>
           )}

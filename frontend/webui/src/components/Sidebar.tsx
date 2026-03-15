@@ -9,11 +9,11 @@ interface SidebarProps {
   selectedBot: string | null;
   onSelectBot: (botName: string | null) => void;
   onSelectConversation: (id: string) => void;
-  onCreateConversation: (name: string, providerId?: string | null) => void;
-  onNewConversationWithBot: (botName: string) => void;
+  onCreateConversation: (name: string, providerId?: string | null, participants?: string[]) => void;
   onDeleteConversation: (id: string) => void;
   onAddProvider: (req: CreateProviderRequest) => void;
   onAddBot: (req: CreateBotRequest) => void;
+  onAddParticipant: (conversationId: string, participantName: string) => void;
 }
 
 type TreeNode = Conversation & { children: TreeNode[] };
@@ -78,10 +78,10 @@ export default function Sidebar({
   onSelectBot,
   onSelectConversation,
   onCreateConversation,
-  onNewConversationWithBot,
   onDeleteConversation,
   onAddProvider,
   onAddBot,
+  onAddParticipant,
 }: SidebarProps) {
   const [showProviderForm, setShowProviderForm] = useState(false);
   const [showBotForm, setShowBotForm] = useState(false);
@@ -146,6 +146,11 @@ export default function Sidebar({
             <span className={`text-sm whitespace-nowrap overflow-hidden text-ellipsis ${isSub ? 'text-[0.8125rem] text-text' : 'text-text-bright'}`}>
               {node.name}
             </span>
+            {node.participants && node.participants.length > 0 && (
+              <span className="text-[0.6rem] text-text-dim truncate">
+                {node.participants.join(', ')}
+              </span>
+            )}
             {node.createdAtMillis != null && (
               <span className="text-[0.6875rem] text-text-dim">
                 {formatCreationTime(node.createdAtMillis)}
@@ -237,30 +242,21 @@ export default function Sidebar({
           )}
         </div>
         <div className="p-3 border-b border-border">
-          {selectedBot == null ? (
-            <>
-              <button
-                className="w-full py-2 px-3 bg-bg-input text-text-bright border border-border rounded-lg cursor-pointer text-sm transition-colors duration-150 hover:bg-bg-hover"
-                onClick={() => setShowNewConv(!showNewConv)}
-              >
-                + New Conversation
-              </button>
-              {showNewConv && (
-                <NewConversationForm
-                  onCreate={(name) => {
-                    onCreateConversation(name);
-                    setShowNewConv(false);
-                  }}
-                />
-              )}
-            </>
-          ) : (
-            <button
-              className="w-full py-2 px-3 bg-bg-input text-text-bright border border-border rounded-lg cursor-pointer text-sm transition-colors duration-150 hover:bg-bg-hover"
-              onClick={() => onNewConversationWithBot(selectedBot)}
-            >
-              + New conversation with {selectedBot}
-            </button>
+          <button
+            className="w-full py-2 px-3 bg-bg-input text-text-bright border border-border rounded-lg cursor-pointer text-sm transition-colors duration-150 hover:bg-bg-hover"
+            onClick={() => setShowNewConv(!showNewConv)}
+          >
+            + New Conversation
+          </button>
+          {showNewConv && (
+            <NewConversationForm
+              bots={bots}
+              initialBot={selectedBot}
+              onCreate={(name, participants) => {
+                onCreateConversation(name, null, participants);
+                setShowNewConv(false);
+              }}
+            />
           )}
         </div>
         <div>
@@ -270,6 +266,13 @@ export default function Sidebar({
           {regularTree.map((root) => renderConversation(root, false))}
           {regularTree.length === 0 && (
             <p className="text-center py-4 px-3 text-text-dim text-[0.8125rem]">No conversations yet</p>
+          )}
+          {activeId != null && (
+            <AddParticipantButton
+              bots={bots}
+              conversationId={activeId}
+              onAdd={onAddParticipant}
+            />
           )}
         </div>
         {selectedBot == null && (
@@ -452,8 +455,29 @@ function BotButton({
   );
 }
 
-function NewConversationForm({ onCreate }: { onCreate: (name: string) => void }) {
+function NewConversationForm({
+  bots,
+  initialBot,
+  onCreate,
+}: {
+  bots: Bot[];
+  initialBot: string | null;
+  onCreate: (name: string, participants: string[]) => void;
+}) {
   const [name, setName] = useState('');
+  const [selectedBots, setSelectedBots] = useState<string[]>(initialBot ? [initialBot] : []);
+
+  const toggleBot = (botName: string) => {
+    setSelectedBots((prev) =>
+      prev.includes(botName) ? prev.filter((b) => b !== botName) : [...prev, botName],
+    );
+  };
+
+  const handleCreate = () => {
+    if (!name.trim()) return;
+    const participants = ['user', ...selectedBots];
+    onCreate(name.trim(), participants);
+  };
 
   return (
     <div className="flex flex-col gap-1.5 mt-2">
@@ -462,16 +486,73 @@ function NewConversationForm({ onCreate }: { onCreate: (name: string) => void })
         value={name}
         onChange={(e) => setName(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === 'Enter' && name.trim()) onCreate(name.trim());
+          if (e.key === 'Enter') handleCreate();
         }}
         className="p-1.5 px-2.5 bg-bg-input text-text border border-border rounded-lg text-[0.8125rem] outline-none focus:border-accent"
       />
+      {bots.length > 0 && (
+        <div className="flex flex-col gap-0.5">
+          <span className="text-[0.6875rem] text-text-dim uppercase tracking-wide">Invite bots</span>
+          {bots.map((b) => (
+            <label key={b.name} className="flex items-center gap-1.5 px-1 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={selectedBots.includes(b.name)}
+                onChange={() => toggleBot(b.name)}
+                className="accent-accent"
+              />
+              <span className="text-[0.8125rem] text-text">{b.name}</span>
+            </label>
+          ))}
+        </div>
+      )}
       <button
         className="py-1.5 px-3 bg-accent text-white border-0 rounded-lg cursor-pointer text-[0.8125rem] transition-colors duration-150 hover:bg-accent-hover"
-        onClick={() => name.trim() && onCreate(name.trim())}
+        onClick={handleCreate}
       >
         Create
       </button>
+    </div>
+  );
+}
+
+function AddParticipantButton({
+  bots,
+  conversationId,
+  onAdd,
+}: {
+  bots: Bot[];
+  conversationId: string;
+  onAdd: (conversationId: string, participantName: string) => void;
+}) {
+  const [show, setShow] = useState(false);
+
+  if (bots.length === 0) return null;
+
+  return (
+    <div className="px-3 py-1">
+      <button
+        className="text-[0.75rem] text-text-dim hover:text-accent transition-colors cursor-pointer"
+        onClick={() => setShow(!show)}
+      >
+        + Add bot to conversation
+      </button>
+      {show && (
+        <div className="flex flex-col gap-0.5 mt-1">
+          {bots.map((b) => (
+            <button
+              key={b.name}
+              className="text-left text-[0.8125rem] text-text px-2 py-1 rounded hover:bg-bg-hover cursor-pointer"
+              onClick={() => {
+                onAdd(conversationId, b.name);
+                setShow(false);
+              }}
+            >
+              {b.name}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -5,7 +5,6 @@ import com.programmersdiary.aidaemon.chat.ChatMessage;
 import com.programmersdiary.aidaemon.chat.ChatResult;
 import com.programmersdiary.aidaemon.chat.ChatService;
 import com.programmersdiary.aidaemon.chat.ContextConfig;
-import com.programmersdiary.aidaemon.chat.ContextWindowTrimmer;
 import com.programmersdiary.aidaemon.chat.StreamChunk;
 import com.programmersdiary.aidaemon.chat.StreamRequestMetadata;
 import com.programmersdiary.aidaemon.files.FileStorageService;
@@ -13,7 +12,6 @@ import com.programmersdiary.aidaemon.skills.SkillsService;
 import org.springframework.ai.chat.messages.Message;
 import reactor.core.publisher.Flux;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 
@@ -41,19 +39,14 @@ public class Bot {
     public ChatResult chat(String providerId, List<ChatMessage> messages, String conversationId, String senderIdentity) {
         var meta = streamRequestMetadata(messages, conversationId);
         var contextMessages = buildContext(messages, senderIdentity);
-        var result = chatService.streamAndCollect(providerId, contextMessages, meta);
-        appendToPersonalMemoryAfterChat(messages, result);
-        return result;
+        return chatService.streamAndCollect(providerId, contextMessages, meta);
     }
 
     public Flux<StreamChunk> chatStream(String providerId, List<ChatMessage> messages, String conversationId,
                                        Consumer<ChatResult> onComplete, String senderIdentity) {
         var meta = streamRequestMetadata(messages, conversationId);
         var contextMessages = buildContext(messages, senderIdentity);
-        return chatService.stream(providerId, contextMessages, meta, result -> {
-            appendToPersonalMemoryAfterChat(messages, result);
-            onComplete.accept(result);
-        });
+        return chatService.stream(providerId, contextMessages, meta, onComplete);
     }
 
     public List<Message> buildContext(List<ChatMessage> messages) {
@@ -61,23 +54,11 @@ public class Bot {
     }
 
     public List<Message> buildContext(List<ChatMessage> messages, String senderIdentity) {
-        return contextBuilder.buildMessages(messages, name, contextConfig.conversationLimit(),
-                contextConfig.personalMemoryLimit(), contextConfig.systemInstructions(), senderIdentity);
+        return contextBuilder.buildMessages(messages, name, contextConfig.charsLimit(),
+                contextConfig.systemInstructions(), senderIdentity);
     }
 
     public StreamRequestMetadata streamRequestMetadata(List<ChatMessage> messages, String conversationId) {
-        return new StreamRequestMetadata(messages, conversationId, name, contextConfig.conversationLimit());
-    }
-
-    private void appendToPersonalMemoryAfterChat(List<ChatMessage> messages, ChatResult result) {
-        var filtered = messages.stream().filter(m -> !"tool".equals(m.participant())).toList();
-        if (filtered.isEmpty()) return;
-        var history = filtered.subList(0, filtered.size() - 1);
-        var contextConversation = new ArrayList<ChatMessage>();
-        if (!history.isEmpty()) {
-            contextConversation.addAll(ContextWindowTrimmer.trimChatHistory(history, contextConfig.conversationLimit()));
-        }
-        contextConversation.add(filtered.get(filtered.size() - 1));
-        botService.appendTurnToPersonalMemory(name, contextConversation, result.assistantContent());
+        return new StreamRequestMetadata(messages, conversationId, name, contextConfig.charsLimit());
     }
 }

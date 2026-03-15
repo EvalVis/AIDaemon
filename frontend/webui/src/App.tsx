@@ -4,6 +4,12 @@ import ChatWindow from './components/ChatWindow';
 import * as api from './api';
 import type { Bot, Conversation, CreateBotRequest, CreateProviderRequest, FileAttachment, PendingToolApproval, Provider } from './types';
 
+function botParticipantsOf(conv: Conversation | null): string[] {
+  if (!conv) return [];
+  const participants = conv.participants ?? [];
+  return participants.filter((p) => p !== 'user');
+}
+
 export interface StreamPart {
   type: 'answer' | 'tool' | 'reasoning';
   content: string;
@@ -21,6 +27,7 @@ export default function App() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [selectedBot, setSelectedBot] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
+  const [notifyParticipants, setNotifyParticipants] = useState<string[]>([]);
   const [streaming, setStreaming] = useState<StreamingContent | null>(null);
   const [pendingApprovals, setPendingApprovals] = useState<PendingToolApproval[]>([]);
   const [lastStreamedContent, setLastStreamedContent] = useState<{ conversationId: string; reasoning: string; parts: StreamPart[] } | null>(null);
@@ -55,10 +62,8 @@ export default function App() {
   }, []);
 
   const activeConversation = conversations.find((c) => c.id === activeId) ?? null;
-  const displayConversations =
-    selectedBot != null
-      ? conversations
-      : conversations.filter((c) => !(c.participant1 != null && c.participant2 != null));
+
+  const displayConversations = conversations;
   const headerTitle = selectedBot ?? 'User';
 
   useEffect(() => {
@@ -66,6 +71,10 @@ export default function App() {
       setActiveId(null);
     }
   }, [selectedBot, activeId, displayConversations]);
+
+  useEffect(() => {
+    setNotifyParticipants(botParticipantsOf(activeConversation));
+  }, [activeId]);
 
   const handleAddProvider = async (req: CreateProviderRequest) => {
     const created = await api.createProvider(req);
@@ -77,31 +86,22 @@ export default function App() {
     setBots((prev) => [...prev, created]);
   };
 
-  const handleCreateConversation = async (name: string, providerId?: string | null) => {
-    const res = await api.createConversation(name, providerId);
-    const conv: Conversation = {
-      id: res.conversationId,
-      name: res.name,
-      providerId: res.providerId ?? null,
-      messages: [],
-    };
-    setConversations((prev) => [...prev, conv]);
-    setActiveId(conv.id);
-  };
-
-  const handleOpenDirectChat = async (botName: string, providerId?: string | null) => {
-    const conv = await api.getOrCreateDirectConversation(botName, providerId);
+  const handleCreateConversation = async (name: string, providerId?: string | null, participants?: string[]) => {
+    const conv = await api.createConversation(name, providerId, participants);
     setConversations((prev) => {
       const exists = prev.some((c) => c.id === conv.id);
-      if (exists) return prev.map((c) => (c.id === conv.id ? conv : c));
-      return [...prev, conv];
+      return exists ? prev.map((c) => (c.id === conv.id ? conv : c)) : [...prev, conv];
     });
     setActiveId(conv.id);
+    setNotifyParticipants(botParticipantsOf(conv));
   };
 
-  const handleNewConversationWithBot = async (botName: string) => {
-    setSelectedBot(botName);
-    await handleOpenDirectChat(botName);
+  const handleAddParticipant = async (conversationId: string, participantName: string) => {
+    const updated = await api.addParticipant(conversationId, participantName);
+    setConversations((prev) => prev.map((c) => (c.id === conversationId ? updated : c)));
+    if (conversationId === activeId) {
+      setNotifyParticipants(botParticipantsOf(updated));
+    }
   };
 
   const handleUpdateConversationProvider = async (id: string, providerId: string | null) => {
@@ -140,6 +140,9 @@ export default function App() {
     setStreaming(initial);
     streamingRef.current = initial;
     const fileIds = files.map((f) => f.id);
+    const currentNotify = notifyParticipants.length > 0
+      ? notifyParticipants
+      : botParticipantsOf(activeConversation);
     api.sendMessageStream(
       activeId,
       message,
@@ -215,7 +218,8 @@ export default function App() {
         setPendingApprovals([]);
         api.fetchConversations(selectedBotRef.current ?? 'user').then(setConversations);
       },
-      fileIds
+      fileIds,
+      currentNotify
     );
   };
 
@@ -241,10 +245,10 @@ export default function App() {
         onSelectBot={setSelectedBot}
         onSelectConversation={setActiveId}
         onCreateConversation={handleCreateConversation}
-        onNewConversationWithBot={handleNewConversationWithBot}
         onDeleteConversation={handleDeleteConversation}
         onAddProvider={handleAddProvider}
         onAddBot={handleAddBot}
+        onAddParticipant={handleAddParticipant}
       />
       <ChatWindow
         key={activeId ?? ''}
@@ -261,6 +265,8 @@ export default function App() {
         pendingApprovals={pendingApprovals}
         onApproveTool={handleApproveTool}
         onRejectTool={handleRejectTool}
+        notifyParticipants={notifyParticipants}
+        onNotifyParticipantsChange={setNotifyParticipants}
       />
     </div>
   );

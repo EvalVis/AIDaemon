@@ -11,6 +11,7 @@ import reactor.core.publisher.Flux;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 @Service
@@ -30,71 +31,39 @@ public class ConversationService {
         this.fileStorageService = fileStorageService;
     }
 
-    public String sendMessageToParticipant(String callerBotName, String target, String message, String providerId) {
-        if (callerBotName == null || callerBotName.isBlank()) {
-            throw new IllegalArgumentException("Caller bot name is required");
+    public Conversation createConversation(String name, String providerId, List<String> participants) {
+        if (name == null || name.isBlank()) {
+            throw new IllegalArgumentException("Conversation name is required");
         }
-        if (target == null || target.isBlank()) {
-            throw new IllegalArgumentException("Target participant is required");
+        if (participants == null || participants.isEmpty()) {
+            throw new IllegalArgumentException("At least one participant is required");
         }
-        if (callerBotName.equals(target)) {
-            throw new IllegalArgumentException("Cannot message yourself");
-        }
-        var botNames = botService.listBots().stream().map(b -> b.name()).toList();
-        if (!botNames.contains(callerBotName)) {
-            throw new IllegalArgumentException("Caller bot not found: " + callerBotName);
-        }
-        if ("user".equalsIgnoreCase(target)) {
-            var conv = getOrCreateDirect("user", callerBotName, providerId);
-            conv.messages().add(ChatMessage.of(callerBotName, message));
-            conversationRepository.save(conv);
-            return "Message written to user conversation.";
-        }
-        if (!botNames.contains(target)) {
-            throw new IllegalArgumentException("Target participant not found: " + target);
-        }
-        var conv = getOrCreateDirect(callerBotName, target, providerId);
-        conv.messages().add(ChatMessage.of(callerBotName, message));
-        conversationRepository.save(conv);
-        triggerBotReplyAsync(conv.id(), target);
-        return "Message sent to " + target + " (conversation: " + conv.id() + "). Awaiting their response.";
+        participants.forEach(this::validateParticipant);
+        var conv = new Conversation(UUID.randomUUID().toString(), name, providerId, new ArrayList<>(),
+                System.currentTimeMillis(), List.copyOf(participants));
+        return conversationRepository.save(conv);
     }
 
-    public Conversation getOrCreateDirect(String participant1, String participant2, String providerId) {
-        if (participant1 == null || participant1.isBlank() || participant2 == null || participant2.isBlank()) {
-            throw new IllegalArgumentException("Both participants are required");
+    public Conversation addParticipant(String conversationId, String participantName) {
+        validateParticipant(participantName);
+        var conv = conversationRepository.findById(conversationId)
+                .orElseThrow(() -> new IllegalArgumentException("Conversation not found: " + conversationId));
+        var current = new ArrayList<>(conv.participants() != null ? conv.participants() : List.of());
+        if (!current.contains(participantName)) {
+            current.add(participantName);
         }
-        validateParticipant(participant1);
-        validateParticipant(participant2);
-        var id = Conversation.canonicalId(participant1, participant2);
-        var p1 = participant1.compareTo(participant2) <= 0 ? participant1 : participant2;
-        var p2 = participant1.compareTo(participant2) <= 0 ? participant2 : participant1;
-        return conversationRepository.findById(id)
-                .map(conv -> {
-                    if (providerId != null && !providerId.isBlank() && !providerId.equals(conv.providerId())) {
-                        var updated = new Conversation(conv.id(), conv.name(), providerId,
-                                conv.messages(), conv.createdAtMillis(),
-                                conv.participant1(), conv.participant2(), conv.direct());
-                        conversationRepository.save(updated);
-                        return updated;
-                    }
-                    return conv;
-                })
-                .orElseGet(() -> {
-                    var name = participant1 + " & " + participant2;
-                    var conv = new Conversation(id, name, providerId, new ArrayList<>(),
-                            System.currentTimeMillis(), p1, p2, true);
-                    return conversationRepository.save(conv);
-                });
+        var updated = new Conversation(conv.id(), conv.name(), conv.providerId(),
+                conv.messages(), conv.createdAtMillis(), List.copyOf(current));
+        return conversationRepository.save(updated);
     }
 
-    private void triggerBotReplyAsync(String conversationId, String botName) {
+    void triggerBotReplyAsync(String conversationId, String botName) {
         CompletableFuture.runAsync(() -> {
             try {
                 var conv = conversationRepository.findById(conversationId).orElse(null);
                 if (conv == null || conv.providerId() == null || conv.providerId().isBlank()) return;
                 var bot = botService.getBot(botName);
-                var senderIdentity = senderIdentity(conv, botName);
+                var senderIdentity = lastBotSenderOf(conv, botName);
                 var result = bot.chat(conv.providerId(), conv.messages(), conversationId, senderIdentity);
                 conv.messages().add(ChatMessage.of(botName, result.assistantContent()));
                 conversationRepository.save(conv);
@@ -104,9 +73,20 @@ public class ConversationService {
         });
     }
 
+    private static String lastBotSenderOf(Conversation conv, String excludeBotName) {
+        if (conv.messages() == null) return null;
+        for (int i = conv.messages().size() - 1; i >= 0; i--) {
+            var p = conv.messages().get(i).participant();
+            if (!excludeBotName.equals(p) && !"user".equalsIgnoreCase(p) && !"tool".equalsIgnoreCase(p)) {
+                return p;
+            }
+        }
+        return null;
+    }
+
     private void validateParticipant(String participant) {
         if ("user".equalsIgnoreCase(participant)) return;
-        if (!botService.listBots().stream().anyMatch(b -> participant.equals(b.name()))) {
+        if (botService.listBots().stream().noneMatch(b -> participant.equals(b.name()))) {
             throw new IllegalArgumentException("Participant not found: " + participant);
         }
     }
@@ -115,40 +95,21 @@ public class ConversationService {
         conversationRepository.save(conversation);
     }
 
-    public String sendMessage(String conversationId, String userMessage) {
-        return sendMessage(conversationId, "user", userMessage, List.of());
-    }
-
-    public String sendMessage(String conversationId, String userMessage, List<String> fileIds) {
-        return sendMessage(conversationId, "user", userMessage, fileIds);
-    }
-
-    public String sendMessage(String conversationId, String senderParticipant, String message, List<String> fileIds) {
-        var conversation = conversationRepository.findById(conversationId)
-                .orElseThrow(() -> new IllegalArgumentException("Conversation not found: " + conversationId));
-        if (conversation.providerId() == null || conversation.providerId().isBlank()) {
-            throw new IllegalArgumentException("No agent selected for this conversation");
-        }
-        var files = resolveFiles(fileIds);
-        conversation.messages().add(ChatMessage.ofWithFiles(senderParticipant, message, files));
-        var replyingBotName = getOtherParticipant(conversation, senderParticipant);
-        var bot = botService.getBot(replyingBotName);
-        var senderIdentity = senderIdentity(conversation, replyingBotName);
-        var result = bot.chat(conversation.providerId(), conversation.messages(), conversationId, senderIdentity);
-        conversation.messages().add(ChatMessage.of(replyingBotName, result.assistantContent()));
-        conversationRepository.save(conversation);
-        return result.response();
-    }
-
     public Flux<StreamChunk> sendMessageStream(String conversationId, String userMessage) {
-        return sendMessageStream(conversationId, userMessage, List.of());
+        return sendMessageStream(conversationId, userMessage, List.of(), List.of());
     }
 
     public Flux<StreamChunk> sendMessageStream(String conversationId, String userMessage, List<String> fileIds) {
-        return sendMessageStream(conversationId, "user", userMessage, fileIds);
+        return sendMessageStream(conversationId, "user", userMessage, fileIds, List.of());
     }
 
-    public Flux<StreamChunk> sendMessageStream(String conversationId, String senderParticipant, String message, List<String> fileIds) {
+    public Flux<StreamChunk> sendMessageStream(String conversationId, String userMessage,
+                                               List<String> fileIds, List<String> notifyParticipants) {
+        return sendMessageStream(conversationId, "user", userMessage, fileIds, notifyParticipants);
+    }
+
+    public Flux<StreamChunk> sendMessageStream(String conversationId, String senderParticipant, String message,
+                                               List<String> fileIds, List<String> notifyParticipants) {
         var conversation = conversationRepository.findById(conversationId)
                 .orElseThrow(() -> new IllegalArgumentException("Conversation not found: " + conversationId));
         if (conversation.providerId() == null || conversation.providerId().isBlank()) {
@@ -158,18 +119,22 @@ public class ConversationService {
         conversation.messages().add(ChatMessage.ofWithFiles(senderParticipant, message, files));
         conversationRepository.save(conversation);
 
-        var replyingBotName = getOtherParticipant(conversation, senderParticipant);
-        var bot = botService.getBot(replyingBotName);
-        var senderIdentity = senderIdentity(conversation, replyingBotName);
-        return bot.chatStream(conversation.providerId(), conversation.messages(), conversationId, result -> {
-            conversation.messages().add(ChatMessage.of(replyingBotName, result.assistantContent()));
-            conversationRepository.save(conversation);
-        }, senderIdentity);
-    }
+        var botsToNotify = notifyParticipants != null ? notifyParticipants : List.<String>of();
 
-    static String getOtherParticipant(Conversation conversation, String one) {
-        if (one == null || conversation.participant1() == null || conversation.participant2() == null) return null;
-        return one.equals(conversation.participant1()) ? conversation.participant2() : conversation.participant1();
+        if (botsToNotify.size() == 1) {
+            var replyingBotName = botsToNotify.get(0);
+            var bot = botService.getBot(replyingBotName);
+            var senderIdentity = "user".equalsIgnoreCase(senderParticipant) ? null : senderParticipant;
+            return bot.chatStream(conversation.providerId(), conversation.messages(), conversationId, result -> {
+                conversation.messages().add(ChatMessage.of(replyingBotName, result.assistantContent()));
+                conversationRepository.save(conversation);
+            }, senderIdentity);
+        }
+
+        for (var botName : botsToNotify) {
+            triggerBotReplyAsync(conversationId, botName);
+        }
+        return Flux.empty();
     }
 
     private List<FileAttachment> resolveFiles(List<String> fileIds) {
@@ -181,12 +146,6 @@ public class ConversationService {
                 })
                 .filter(Objects::nonNull)
                 .toList();
-    }
-
-    private static String senderIdentity(Conversation conversation, String replyingBotName) {
-        if (!conversation.isDirect() || replyingBotName == null) return null;
-        var other = getOtherParticipant(conversation, replyingBotName);
-        return other == null || "user".equalsIgnoreCase(other) ? null : other;
     }
 
     public Conversation get(String conversationId) {

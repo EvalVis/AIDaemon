@@ -42,7 +42,7 @@ class ChatContextBuilderFilesTest {
     @Test
     void buildMessages_withNoFiles_producesPlainUserMessage() {
         var messages = List.of(ChatMessage.of("user", "hello"));
-        var result = builder.buildMessages(messages, null, 0, 0, "sys", null);
+        var result = builder.buildMessages(messages, null, 0, "sys", null);
 
         var lastMsg = result.get(result.size() - 1);
         assertInstanceOf(UserMessage.class, lastMsg);
@@ -55,7 +55,7 @@ class ChatContextBuilderFilesTest {
         var attachment = fileStorageService.store("conv-1", "Foo.java", "text/x-java-source", content.getBytes());
         var messages = List.of(ChatMessage.ofWithFiles("user", "review this", List.of(attachment)));
 
-        var result = builder.buildMessages(messages, null, 0, 0, "sys", null);
+        var result = builder.buildMessages(messages, null, 0, "sys", null);
 
         var lastMsg = (UserMessage) result.get(result.size() - 1);
         assertTrue(lastMsg.getText().contains("Foo.java"));
@@ -68,7 +68,7 @@ class ChatContextBuilderFilesTest {
         var attachment = fileStorageService.store("conv-1", "photo.png", "image/png", pngBytes);
         var messages = List.of(ChatMessage.ofWithFiles("user", "describe", List.of(attachment)));
 
-        var result = builder.buildMessages(messages, null, 0, 0, "sys", null);
+        var result = builder.buildMessages(messages, null, 0, "sys", null);
 
         var lastMsg = (UserMessage) result.get(result.size() - 1);
         assertFalse(lastMsg.getMedia().isEmpty());
@@ -81,7 +81,7 @@ class ChatContextBuilderFilesTest {
         var currentMsg = ChatMessage.of("user", "what did I send?");
         var messages = List.of(historyMsg, ChatMessage.of("assistant", "got it"), currentMsg);
 
-        var result = builder.buildMessages(messages, null, 10000, 0, "sys", null);
+        var result = builder.buildMessages(messages, null, 10000, "sys", null);
 
         // History user message should contain file name reference, not full content
         var historyUserMsg = result.stream()
@@ -100,7 +100,7 @@ class ChatContextBuilderFilesTest {
                 .formatted(attachment.id());
         var messages = List.of(ChatMessage.of("user", userParts));
 
-        var result = builder.buildMessages(messages, null, 0, 0, "sys", null);
+        var result = builder.buildMessages(messages, null, 0, "sys", null);
 
         var lastMsg = (UserMessage) result.get(result.size() - 1);
         assertTrue(lastMsg.getText().contains("review this"), "should contain leading text");
@@ -117,7 +117,7 @@ class ChatContextBuilderFilesTest {
         var currentMsg = ChatMessage.of("user", "follow up");
         var messages = List.of(historyMsg, ChatMessage.of("assistant", "ok"), currentMsg);
 
-        var result = builder.buildMessages(messages, null, 10000, 0, "sys", null);
+        var result = builder.buildMessages(messages, null, 10000, "sys", null);
 
         var historyText = result.stream()
                 .filter(m -> m instanceof UserMessage)
@@ -134,7 +134,7 @@ class ChatContextBuilderFilesTest {
                 ChatMessage.of("user", "hello"),
                 ChatMessage.of("short", "Hi there!")
         );
-        var result = builder.buildMessages(messages, "short", 10, 0, "sys", null);
+        var result = builder.buildMessages(messages, "short", 10, "sys", null);
         var lastMsg = result.get(result.size() - 1);
         assertInstanceOf(AssistantMessage.class, lastMsg);
         assertTrue(((AssistantMessage) lastMsg).getText().contains("Hi there!"));

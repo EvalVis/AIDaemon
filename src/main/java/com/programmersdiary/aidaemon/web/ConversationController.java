@@ -15,8 +15,14 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
-record MessageRequest(String message, List<String> fileIds) {
-    MessageRequest { fileIds = fileIds != null ? fileIds : List.of(); }
+record MessageRequest(String message, List<String> fileIds, List<String> notifyParticipants) {
+    MessageRequest {
+        fileIds = fileIds != null ? fileIds : List.of();
+        notifyParticipants = notifyParticipants != null ? notifyParticipants : List.of();
+    }
+}
+
+record CreateConversationRequest(String name, String providerId, List<String> participants) {
 }
 
 @RestController
@@ -26,7 +32,6 @@ public class ConversationController {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final long NO_TIMEOUT = 0L;
     private static final long DEFAULT_TIMEOUT_MS = 300_000L;
-    private static final String DEFAULT_USER_PARTICIPANT = "user";
 
     private final ConversationService conversationService;
     private final boolean manualApprove;
@@ -40,10 +45,20 @@ public class ConversationController {
         this.manualApprove = manualApprove;
     }
 
-    @GetMapping("/direct/{botName}")
-    public Conversation getOrCreateDirect(@PathVariable String botName,
-                                         @RequestParam(required = false) String providerId) {
-        return conversationService.getOrCreateDirect(DEFAULT_USER_PARTICIPANT, botName, providerId);
+    @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
+    public Conversation create(@RequestBody CreateConversationRequest request) {
+        return conversationService.createConversation(request.name(), request.providerId(),
+                request.participants() != null ? request.participants() : List.of());
+    }
+
+    @PostMapping("/{id}/participants")
+    public Conversation addParticipant(@PathVariable String id, @RequestBody Map<String, String> request) {
+        var participantName = request.get("participantName");
+        if (participantName == null || participantName.isBlank()) {
+            throw new IllegalArgumentException("participantName is required");
+        }
+        return conversationService.addParticipant(id, participantName);
     }
 
     @PatchMapping("/{id}")
@@ -54,25 +69,17 @@ public class ConversationController {
             var raw = request.get("providerId");
             providerId = (raw == null || raw.isBlank()) ? null : raw;
         }
-        var updated = new Conversation(
-                conversation.id(), conversation.name(), providerId,
-                conversation.messages(), conversation.createdAtMillis(),
-                conversation.participant1(), conversation.participant2(), conversation.direct());
+        var updated = new Conversation(conversation.id(), conversation.name(), providerId,
+                conversation.messages(), conversation.createdAtMillis(), conversation.participants());
         conversationService.save(updated);
         return updated;
-    }
-
-    @PostMapping("/{id}/messages")
-    public Map<String, String> sendMessage(@PathVariable String id, @RequestBody MessageRequest request) {
-        var response = conversationService.sendMessage(id, request.message(), request.fileIds());
-        return Map.of("response", response);
     }
 
     @PostMapping(value = "/{id}/messages/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter sendMessageStream(@PathVariable String id, @RequestBody MessageRequest request) {
         var useNoTimeout = manualApprove || shellAccessService.isEnabled();
         var emitter = new SseEmitter(useNoTimeout ? NO_TIMEOUT : DEFAULT_TIMEOUT_MS);
-        conversationService.sendMessageStream(id, request.message(), request.fileIds())
+        conversationService.sendMessageStream(id, request.message(), request.fileIds(), request.notifyParticipants())
                 .subscribe(
                         chunk -> {
                             try {
